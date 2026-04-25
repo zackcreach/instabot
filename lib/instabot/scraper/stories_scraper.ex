@@ -246,10 +246,13 @@ defmodule Instabot.Scraper.StoriesScraper do
         screenshot_path: screenshot_path
       }
 
-      case Instagram.create_story(profile.id, story_attrs) do
-        {:ok, story} ->
+      case Instagram.upsert_story_from_scrape(profile.id, story_attrs) do
+        {:ok, story, status} when status in [:inserted, :updated] ->
           Events.broadcast_story_created(profile, story)
           true
+
+        {:ok, _story, :unchanged} ->
+          false
 
         {:error, _changeset} ->
           false

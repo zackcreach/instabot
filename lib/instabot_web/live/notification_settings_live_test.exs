@@ -3,6 +3,8 @@ defmodule InstabotWeb.NotificationSettingsLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias Instabot.Notifications
+
   setup :register_and_log_in_user
 
   test "renders notification settings form", %{conn: conn} do
@@ -63,5 +65,24 @@ defmodule InstabotWeb.NotificationSettingsLiveTest do
       |> render_submit()
 
     assert html =~ "Notification preferences saved."
+  end
+
+  test "saves content checkbox preferences", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, ~p"/settings/notifications")
+
+    view
+    |> form("#notification_form",
+      notification_preference: %{
+        frequency: "daily",
+        include_images: false,
+        include_ocr: false
+      }
+    )
+    |> render_submit()
+
+    preference = Notifications.get_preference_for_user(user.id)
+
+    assert false == preference.include_images
+    assert false == preference.include_ocr
   end
 end

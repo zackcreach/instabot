@@ -144,8 +144,11 @@ defmodule Instabot.Scraper.PostsScraper do
 
   defp fetch_single_post(browser, page_id, post_ref) do
     with {:ok, _} <- Browser.navigate(browser, page_id, post_ref.permalink),
-         {:ok, html} <- Browser.get_page_content(browser, page_id) do
-      details = Parser.extract_post_details(html)
+         {:ok, html} <- Browser.get_page_content(browser, page_id),
+         {:ok, json_responses} <- Browser.get_json_responses(browser, page_id) do
+      details =
+        Parser.extract_post_details_from_responses(json_responses, post_ref.instagram_post_id) ||
+          Parser.extract_post_details(html)
 
       {:ok,
        Map.merge(details, %{

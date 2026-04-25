@@ -109,6 +109,26 @@ defmodule Instabot.Scraper.Parser do
   end
 
   @doc """
+  Extracts detailed post data from captured JSON network responses.
+  """
+  @spec extract_post_details_from_responses([map()], String.t()) :: map() | nil
+  def extract_post_details_from_responses(responses, shortcode) when is_list(responses) and is_binary(shortcode) do
+    responses
+    |> Enum.flat_map(fn
+      %{"body" => body} -> collect_post_items(body, shortcode)
+      %{body: body} -> collect_post_items(body, shortcode)
+      body -> collect_post_items(body, shortcode)
+    end)
+    |> List.first()
+    |> case do
+      nil -> nil
+      item -> post_details_from_item(item)
+    end
+  end
+
+  def extract_post_details_from_responses(_responses, _shortcode), do: nil
+
+  @doc """
   Extracts profile metadata from an Instagram profile page.
   """
   @spec extract_profile_metadata(String.t()) :: map()
@@ -358,6 +378,39 @@ defmodule Instabot.Scraper.Parser do
 
   defp extract_urls_from_additional(_), do: []
 
+  defp extract_urls_from_post_item(item) do
+    item
+    |> post_item_media_urls()
+    |> Enum.map(&decode_html_entities/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  defp post_item_media_urls(%{"edge_sidecar_to_children" => %{"edges" => edges}}) when is_list(edges) do
+    Enum.flat_map(edges, fn
+      %{"node" => node} -> post_item_media_urls(node)
+      _ -> []
+    end)
+  end
+
+  defp post_item_media_urls(%{"carousel_media" => carousel_media}) when is_list(carousel_media) do
+    Enum.flat_map(carousel_media, &post_item_media_urls/1)
+  end
+
+  defp post_item_media_urls(%{"image_versions2" => %{"candidates" => candidates}}) when is_list(candidates) do
+    candidates
+    |> List.first()
+    |> case do
+      %{"url" => url} when is_binary(url) -> [url]
+      _ -> []
+    end
+  end
+
+  defp post_item_media_urls(%{"video_versions" => [%{"url" => url} | _]}) when is_binary(url), do: [url]
+  defp post_item_media_urls(%{"display_url" => url}) when is_binary(url), do: [url]
+  defp post_item_media_urls(%{"video_url" => url}) when is_binary(url), do: [url]
+  defp post_item_media_urls(_item), do: []
+
   defp extract_urls_from_meta(html) do
     case Regex.run(~r/<meta\s+(?:property|name)="og:image"\s+content="([^"]*)"/, html) do
       [_, url] -> [decode_html_entities(url)]
@@ -418,6 +471,75 @@ defmodule Instabot.Scraper.Parser do
   end
 
   defp parse_timestamp(_), do: nil
+
+  defp post_details_from_item(item) do
+    caption = item |> extract_post_item_caption() |> decode_html_entities()
+    media_urls = extract_urls_from_post_item(item)
+
+    %{
+      caption: caption || "",
+      hashtags: extract_hashtags(caption || ""),
+      posted_at: extract_post_item_timestamp(item) || extract_caption_date(caption || ""),
+      post_type: determine_post_item_type(item, media_urls),
+      media_urls: media_urls
+    }
+  end
+
+  defp extract_post_item_caption(item) do
+    get_first_present([
+      get_in(item, ["edge_media_to_caption", "edges", Access.at(0), "node", "text"]),
+      get_in(item, ["caption", "text"]),
+      get_in(item, ["caption", "body"]),
+      item["caption_text"],
+      item["accessibility_caption"]
+    ])
+  end
+
+  defp extract_post_item_timestamp(item) do
+    [
+      item["taken_at_timestamp"],
+      item["taken_at"],
+      item["created_time"]
+    ]
+    |> get_first_present()
+    |> parse_timestamp()
+  end
+
+  defp determine_post_item_type(item, media_urls) do
+    cond do
+      item["product_type"] == "clips" -> "reel"
+      item["__typename"] == "GraphVideo" -> "video"
+      item["is_video"] == true -> "video"
+      item["media_type"] == 2 -> "video"
+      length(media_urls) > 1 -> "carousel"
+      true -> "image"
+    end
+  end
+
+  defp collect_post_items(items, shortcode) when is_list(items) do
+    Enum.flat_map(items, &collect_post_items(&1, shortcode))
+  end
+
+  defp collect_post_items(%{} = item, shortcode) do
+    nested_items =
+      item
+      |> Map.values()
+      |> Enum.flat_map(&collect_post_items(&1, shortcode))
+
+    if post_item?(item, shortcode), do: [item | nested_items], else: nested_items
+  end
+
+  defp collect_post_items(_item, _shortcode), do: []
+
+  defp post_item?(item, shortcode) do
+    shortcode in [
+      item["shortcode"],
+      item["code"],
+      item["id"],
+      item["pk"]
+    ] and
+      (extract_post_item_caption(item) not in [nil, ""] or extract_urls_from_post_item(item) != [])
+  end
 
   defp classify_story_type(%{"video_url" => url}) when is_binary(url), do: "video"
   defp classify_story_type(%{"video_versions" => versions}) when is_list(versions), do: "video"

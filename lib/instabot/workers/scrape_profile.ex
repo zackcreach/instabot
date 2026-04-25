@@ -46,8 +46,8 @@ defmodule Instabot.Workers.ScrapeProfile do
       case scrape_result([posts_result, stories_result]) do
         :ok ->
           Events.broadcast(profile, :downstream)
-          enqueue_downstream_jobs(profile)
-          maybe_enqueue_immediate_notification(profile.user_id)
+          pending_ocr_count = enqueue_downstream_jobs(profile)
+          maybe_enqueue_immediate_notification(profile.user_id, pending_ocr_count)
           :ok
 
         {:error, _reason} = error ->
@@ -123,17 +123,22 @@ defmodule Instabot.Workers.ScrapeProfile do
   end
 
   defp enqueue_ocr_jobs(tracked_profile_id) do
-    tracked_profile_id
-    |> Instagram.get_stories_pending_ocr()
-    |> Enum.each(fn story ->
+    stories = Instagram.get_stories_pending_ocr(tracked_profile_id)
+
+    Enum.each(stories, fn story ->
       %{story_id: story.id}
       |> ProcessOCR.new()
       |> Oban.insert()
     end)
+
+    length(stories)
   end
 
-  defp maybe_enqueue_immediate_notification(user_id) do
+  defp maybe_enqueue_immediate_notification(user_id, pending_ocr_count) do
     case Notifications.get_preference_for_user(user_id) do
+      %{frequency: "immediate", include_ocr: true} when pending_ocr_count > 0 ->
+        :ok
+
       %{frequency: "immediate"} ->
         %{user_id: user_id}
         |> SendImmediateNotification.new()

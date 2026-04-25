@@ -5,6 +5,7 @@ defmodule InstabotWeb.StoriesLive do
   alias Instabot.Instagram
   alias Instabot.Instagram.Events
   alias Instabot.Instagram.Feed
+  alias Instabot.Media
   alias InstabotWeb.DateTimeFormatter
 
   @page_size Feed.default_limit()
@@ -54,13 +55,13 @@ defmodule InstabotWeb.StoriesLive do
               >
                 <figure class="aspect-[9/16] bg-base-300 overflow-hidden">
                   <img
-                    :if={story.screenshot_path}
-                    src={Instabot.Media.to_url(story.screenshot_path)}
+                    :if={story_preview_url(story)}
+                    src={story_preview_url(story)}
                     alt="Story screenshot"
                     class="w-full h-full object-cover"
                   />
                   <div
-                    :if={!story.screenshot_path}
+                    :if={!story_preview_url(story)}
                     class="flex items-center justify-center w-full h-full"
                   >
                     <.icon name="hero-film" class="size-10 opacity-30" />
@@ -133,7 +134,7 @@ defmodule InstabotWeb.StoriesLive do
       </script>
 
       <div :if={@selected_story} id="story-modal" class="modal modal-open" role="dialog">
-        <div class="modal-box max-w-2xl">
+        <div class="modal-box max-w-lg">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-2">
               <div class={[
@@ -173,15 +174,23 @@ defmodule InstabotWeb.StoriesLive do
 
           <div
             id={"lightbox-#{@selected_story.id}"}
-            phx-hook=".Lightbox"
-            class="aspect-[9/16] bg-base-300 rounded overflow-hidden mb-4 max-h-[60vh] mx-auto select-none"
+            class="aspect-[9/16] bg-base-300 rounded overflow-hidden mb-4 max-h-[60vh] max-w-[360px] mx-auto"
           >
-            <img
-              :if={@selected_story.screenshot_path}
-              src={Instabot.Media.to_url(@selected_story.screenshot_path)}
-              alt="Story screenshot"
-              class="w-full h-full object-contain pointer-events-none"
-            />
+            <a
+              :if={story_preview_url(@selected_story)}
+              id="story-modal-image-link"
+              href={story_preview_url(@selected_story)}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block w-full h-full"
+              aria-label="Open image"
+            >
+              <img
+                src={story_preview_url(@selected_story)}
+                alt="Story screenshot"
+                class="w-full h-full object-cover"
+              />
+            </a>
           </div>
 
           <div :if={@selected_story.ocr_text} class="mb-3">
@@ -200,140 +209,6 @@ defmodule InstabotWeb.StoriesLive do
           <span class="sr-only">Close</span>
         </.link>
       </div>
-
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".Lightbox">
-        export default {
-          mounted() {
-            this.scale = 1;
-            this.translateX = 0;
-            this.translateY = 0;
-            this.dragging = false;
-            this.lastX = 0;
-            this.lastY = 0;
-            this.initialPinchDistance = null;
-            this.initialPinchScale = 1;
-
-            this.img = this.el.querySelector("img");
-            if (!this.img) return;
-
-            this.el.style.cursor = "zoom-in";
-            this.el.style.touchAction = "none";
-
-            this.handleWheel = (event) => {
-              event.preventDefault();
-              const delta = event.deltaY > 0 ? -0.2 : 0.2;
-              this.zoom(Math.max(1, Math.min(5, this.scale + delta)));
-            };
-
-            this.handleDblClick = () => {
-              if (this.scale > 1) {
-                this.zoom(1);
-              } else {
-                this.zoom(2.5);
-              }
-            };
-
-            this.handleMouseDown = (event) => {
-              if (this.scale <= 1) return;
-              event.preventDefault();
-              this.dragging = true;
-              this.lastX = event.clientX;
-              this.lastY = event.clientY;
-              this.el.style.cursor = "grabbing";
-            };
-
-            this.handleMouseMove = (event) => {
-              if (!this.dragging) return;
-              this.translateX += event.clientX - this.lastX;
-              this.translateY += event.clientY - this.lastY;
-              this.lastX = event.clientX;
-              this.lastY = event.clientY;
-              this.clampAndApply();
-            };
-
-            this.handleMouseUp = () => {
-              this.dragging = false;
-              this.el.style.cursor = this.scale > 1 ? "grab" : "zoom-in";
-            };
-
-            this.handleTouchStart = (event) => {
-              if (event.touches.length === 2) {
-                this.initialPinchDistance = this.pinchDistance(event.touches);
-                this.initialPinchScale = this.scale;
-              } else if (event.touches.length === 1 && this.scale > 1) {
-                this.dragging = true;
-                this.lastX = event.touches[0].clientX;
-                this.lastY = event.touches[0].clientY;
-              }
-            };
-
-            this.handleTouchMove = (event) => {
-              event.preventDefault();
-              if (event.touches.length === 2 && this.initialPinchDistance) {
-                const distance = this.pinchDistance(event.touches);
-                const ratio = distance / this.initialPinchDistance;
-                this.zoom(Math.max(1, Math.min(5, this.initialPinchScale * ratio)));
-              } else if (event.touches.length === 1 && this.dragging) {
-                this.translateX += event.touches[0].clientX - this.lastX;
-                this.translateY += event.touches[0].clientY - this.lastY;
-                this.lastX = event.touches[0].clientX;
-                this.lastY = event.touches[0].clientY;
-                this.clampAndApply();
-              }
-            };
-
-            this.handleTouchEnd = (event) => {
-              if (event.touches.length < 2) this.initialPinchDistance = null;
-              if (event.touches.length === 0) this.dragging = false;
-            };
-
-            this.el.addEventListener("wheel", this.handleWheel, { passive: false });
-            this.el.addEventListener("dblclick", this.handleDblClick);
-            this.el.addEventListener("mousedown", this.handleMouseDown);
-            window.addEventListener("mousemove", this.handleMouseMove);
-            window.addEventListener("mouseup", this.handleMouseUp);
-            this.el.addEventListener("touchstart", this.handleTouchStart, { passive: true });
-            this.el.addEventListener("touchmove", this.handleTouchMove, { passive: false });
-            this.el.addEventListener("touchend", this.handleTouchEnd);
-          },
-
-          destroyed() {
-            window.removeEventListener("mousemove", this.handleMouseMove);
-            window.removeEventListener("mouseup", this.handleMouseUp);
-          },
-
-          zoom(newScale) {
-            this.scale = newScale;
-            if (this.scale <= 1) {
-              this.translateX = 0;
-              this.translateY = 0;
-            }
-            this.el.style.cursor = this.scale > 1 ? "grab" : "zoom-in";
-            this.clampAndApply();
-          },
-
-          clampAndApply() {
-            if (this.scale <= 1) {
-              this.translateX = 0;
-              this.translateY = 0;
-            } else {
-              const rect = this.el.getBoundingClientRect();
-              const maxX = (rect.width * (this.scale - 1)) / 2;
-              const maxY = (rect.height * (this.scale - 1)) / 2;
-              this.translateX = Math.max(-maxX, Math.min(maxX, this.translateX));
-              this.translateY = Math.max(-maxY, Math.min(maxY, this.translateY));
-            }
-            this.img.style.transform =
-              `scale(${this.scale}) translate(${this.translateX / this.scale}px, ${this.translateY / this.scale}px)`;
-          },
-
-          pinchDistance(touches) {
-            const dx = touches[0].clientX - touches[1].clientX;
-            const dy = touches[0].clientY - touches[1].clientY;
-            return Math.sqrt(dx * dx + dy * dy);
-          }
-        };
-      </script>
     </Layouts.app>
     """
   end
@@ -436,8 +311,55 @@ defmodule InstabotWeb.StoriesLive do
   defp day_sort_key(%{posted_at: nil}), do: 0
   defp day_sort_key(%{posted_at: datetime}), do: -DateTime.to_unix(datetime)
 
-  defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Instabot.Media.to_url(url)
+  defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Media.to_url(url)
   defp profile_avatar_url(_profile), do: nil
+
+  defp story_preview_url(%{screenshot_path: screenshot_path} = story)
+       when is_binary(screenshot_path) and screenshot_path != "" do
+    if local_static_path_exists?(screenshot_path) do
+      Media.to_url(screenshot_path)
+    else
+      story_media_url(story)
+    end
+  end
+
+  defp story_preview_url(story), do: story_media_url(story)
+
+  defp story_media_url(%{media_url: media_url}) when is_binary(media_url) and media_url != "" do
+    if browser_loadable_media_url?(media_url), do: media_url
+  end
+
+  defp story_media_url(_story), do: nil
+
+  defp local_static_path_exists?(path) do
+    cond do
+      String.contains?(path, "priv/static/") ->
+        [_, relative_path] = String.split(path, "priv/static/", parts: 2)
+        File.exists?(path) or File.exists?(Path.join("priv/static", relative_path))
+
+      String.starts_with?(path, "http") ->
+        false
+
+      String.starts_with?(path, "/") ->
+        path
+        |> String.trim_leading("/")
+        |> then(&Path.join("priv/static", &1))
+        |> File.exists?()
+
+      true ->
+        File.exists?(path) or File.exists?(Path.join("priv/static", path))
+    end
+  end
+
+  defp browser_loadable_media_url?(url) do
+    case URI.parse(url) do
+      %{host: host} when is_binary(host) ->
+        not String.ends_with?(host, "cdninstagram.com") and not String.ends_with?(host, "fbcdn.net")
+
+      _ ->
+        true
+    end
+  end
 
   defp format_datetime(datetime), do: DateTimeFormatter.datetime(datetime)
 end

@@ -34,6 +34,31 @@ defmodule InstabotWeb.ProfilesLiveTest do
     end
   end
 
+  describe "save_profile event" do
+    test "enqueues a scrape job for the newly added profile", %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/profiles")
+
+      view
+      |> element("button[phx-click=show_form]")
+      |> render_click()
+
+      view
+      |> form("#add_profile_form", %{
+        "tracked_profile" => %{
+          "instagram_username" => "newprofile",
+          "display_name" => "New Profile"
+        }
+      })
+      |> render_submit()
+
+      profile = Repo.get_by!(TrackedProfile, user_id: user.id, instagram_username: "newprofile")
+
+      assert_enqueued(worker: ScrapeProfile, args: %{tracked_profile_id: profile.id})
+      assert has_element?(view, "#profile-scrape-state-#{profile.id}", "Queued")
+      assert render(view) =~ "Profile @newprofile added and scrape queued."
+    end
+  end
+
   describe "scrape_now event" do
     test "enqueues a scrape job for the profile", %{conn: conn, profile: profile} do
       {:ok, view, _html} = live(conn, ~p"/profiles")

@@ -64,5 +64,25 @@ defmodule Instabot.Workers.SendImmediateNotificationTest do
       digest = Notifications.last_digest_for_user(user.id, "immediate")
       assert %{digest_type: "immediate", posts_count: 1, stories_count: 0} = digest
     end
+
+    test "waits for OCR completion event while story OCR is pending", %{user: user, profile: profile} do
+      pref = Notifications.get_or_create_preference(user.id)
+      {:ok, _preference} = Notifications.update_preference(pref, %{frequency: "immediate"})
+
+      {:ok, _story} =
+        Instagram.create_story(profile.id, %{
+          instagram_story_id: "imm_pending_ocr_story_#{System.unique_integer([:positive])}",
+          story_type: "image",
+          screenshot_path: "/tmp/imm_pending_ocr_story.png",
+          ocr_status: "pending"
+        })
+
+      assert :ok ==
+               SendImmediateNotification.perform(%Oban.Job{
+                 args: %{"user_id" => user.id}
+               })
+
+      assert nil == Notifications.last_digest_for_user(user.id, "immediate")
+    end
   end
 end

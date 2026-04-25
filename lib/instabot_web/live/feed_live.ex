@@ -156,7 +156,7 @@ defmodule InstabotWeb.FeedLive do
       </script>
 
       <div :if={@selected_post} id="post-modal" class="modal modal-open" role="dialog">
-        <div class="modal-box max-w-4xl">
+        <div class="modal-box max-w-2xl">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-2">
               <div class={[
@@ -192,15 +192,23 @@ defmodule InstabotWeb.FeedLive do
 
           <div
             id={"lightbox-#{@selected_post.id}-#{@selected_image_index}"}
-            phx-hook=".Lightbox"
-            class="relative aspect-square bg-base-300 rounded overflow-hidden mb-4 select-none"
+            class="relative flex justify-center mb-4 mx-auto"
           >
-            <img
+            <a
               :if={current_image(@selected_post, @selected_image_index)}
-              src={current_image(@selected_post, @selected_image_index)}
-              alt={display_caption(@selected_post.caption) || "Instagram post"}
-              class="w-full h-full object-contain pointer-events-none"
-            />
+              id="post-modal-image-link"
+              href={current_image(@selected_post, @selected_image_index)}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block max-h-[58vh] max-w-full"
+              aria-label="Open image"
+            >
+              <img
+                src={current_image(@selected_post, @selected_image_index)}
+                alt={display_caption(@selected_post.caption) || "Instagram post"}
+                class="max-h-[58vh] max-w-full w-auto h-auto rounded object-contain"
+              />
+            </a>
             <div
               :if={image_count(@selected_post) > 1}
               class="absolute inset-0 flex items-center justify-between p-2 pointer-events-none"
@@ -230,9 +238,12 @@ defmodule InstabotWeb.FeedLive do
             </div>
           </div>
 
-          <p :if={display_caption(@selected_post.caption)} class="text-sm whitespace-pre-wrap mb-3">
-            {display_caption(@selected_post.caption)}
-          </p>
+          <p
+            :if={display_caption(@selected_post.caption)}
+            id="post-modal-caption"
+            class="text-sm whitespace-pre-wrap mb-3"
+            phx-no-format
+          >{display_caption(@selected_post.caption)}</p>
 
           <div :if={@selected_post.hashtags != []} class="flex flex-wrap gap-1 mb-3">
             <span
@@ -260,140 +271,6 @@ defmodule InstabotWeb.FeedLive do
           <span class="sr-only">Close</span>
         </.link>
       </div>
-
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".Lightbox">
-        export default {
-          mounted() {
-            this.scale = 1;
-            this.translateX = 0;
-            this.translateY = 0;
-            this.dragging = false;
-            this.lastX = 0;
-            this.lastY = 0;
-            this.initialPinchDistance = null;
-            this.initialPinchScale = 1;
-
-            this.img = this.el.querySelector("img");
-            if (!this.img) return;
-
-            this.el.style.cursor = "zoom-in";
-            this.el.style.touchAction = "none";
-
-            this.handleWheel = (event) => {
-              event.preventDefault();
-              const delta = event.deltaY > 0 ? -0.2 : 0.2;
-              this.zoom(Math.max(1, Math.min(5, this.scale + delta)));
-            };
-
-            this.handleDblClick = () => {
-              if (this.scale > 1) {
-                this.zoom(1);
-              } else {
-                this.zoom(2.5);
-              }
-            };
-
-            this.handleMouseDown = (event) => {
-              if (this.scale <= 1) return;
-              event.preventDefault();
-              this.dragging = true;
-              this.lastX = event.clientX;
-              this.lastY = event.clientY;
-              this.el.style.cursor = "grabbing";
-            };
-
-            this.handleMouseMove = (event) => {
-              if (!this.dragging) return;
-              this.translateX += event.clientX - this.lastX;
-              this.translateY += event.clientY - this.lastY;
-              this.lastX = event.clientX;
-              this.lastY = event.clientY;
-              this.clampAndApply();
-            };
-
-            this.handleMouseUp = () => {
-              this.dragging = false;
-              this.el.style.cursor = this.scale > 1 ? "grab" : "zoom-in";
-            };
-
-            this.handleTouchStart = (event) => {
-              if (event.touches.length === 2) {
-                this.initialPinchDistance = this.pinchDistance(event.touches);
-                this.initialPinchScale = this.scale;
-              } else if (event.touches.length === 1 && this.scale > 1) {
-                this.dragging = true;
-                this.lastX = event.touches[0].clientX;
-                this.lastY = event.touches[0].clientY;
-              }
-            };
-
-            this.handleTouchMove = (event) => {
-              event.preventDefault();
-              if (event.touches.length === 2 && this.initialPinchDistance) {
-                const distance = this.pinchDistance(event.touches);
-                const ratio = distance / this.initialPinchDistance;
-                this.zoom(Math.max(1, Math.min(5, this.initialPinchScale * ratio)));
-              } else if (event.touches.length === 1 && this.dragging) {
-                this.translateX += event.touches[0].clientX - this.lastX;
-                this.translateY += event.touches[0].clientY - this.lastY;
-                this.lastX = event.touches[0].clientX;
-                this.lastY = event.touches[0].clientY;
-                this.clampAndApply();
-              }
-            };
-
-            this.handleTouchEnd = (event) => {
-              if (event.touches.length < 2) this.initialPinchDistance = null;
-              if (event.touches.length === 0) this.dragging = false;
-            };
-
-            this.el.addEventListener("wheel", this.handleWheel, { passive: false });
-            this.el.addEventListener("dblclick", this.handleDblClick);
-            this.el.addEventListener("mousedown", this.handleMouseDown);
-            window.addEventListener("mousemove", this.handleMouseMove);
-            window.addEventListener("mouseup", this.handleMouseUp);
-            this.el.addEventListener("touchstart", this.handleTouchStart, { passive: true });
-            this.el.addEventListener("touchmove", this.handleTouchMove, { passive: false });
-            this.el.addEventListener("touchend", this.handleTouchEnd);
-          },
-
-          destroyed() {
-            window.removeEventListener("mousemove", this.handleMouseMove);
-            window.removeEventListener("mouseup", this.handleMouseUp);
-          },
-
-          zoom(newScale) {
-            this.scale = newScale;
-            if (this.scale <= 1) {
-              this.translateX = 0;
-              this.translateY = 0;
-            }
-            this.el.style.cursor = this.scale > 1 ? "grab" : "zoom-in";
-            this.clampAndApply();
-          },
-
-          clampAndApply() {
-            if (this.scale <= 1) {
-              this.translateX = 0;
-              this.translateY = 0;
-            } else {
-              const rect = this.el.getBoundingClientRect();
-              const maxX = (rect.width * (this.scale - 1)) / 2;
-              const maxY = (rect.height * (this.scale - 1)) / 2;
-              this.translateX = Math.max(-maxX, Math.min(maxX, this.translateX));
-              this.translateY = Math.max(-maxY, Math.min(maxY, this.translateY));
-            }
-            this.img.style.transform =
-              `scale(${this.scale}) translate(${this.translateX / this.scale}px, ${this.translateY / this.scale}px)`;
-          },
-
-          pinchDistance(touches) {
-            const dx = touches[0].clientX - touches[1].clientX;
-            const dy = touches[0].clientY - touches[1].clientY;
-            return Math.sqrt(dx * dx + dy * dy);
-          }
-        };
-      </script>
     </Layouts.app>
     """
   end

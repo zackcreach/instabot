@@ -50,7 +50,8 @@ defmodule Instabot.Workers.SendDigestTest do
       {:ok, _story} =
         Instagram.create_story(profile.id, %{
           instagram_story_id: "digest_story_#{System.unique_integer([:positive])}",
-          story_type: "image"
+          story_type: "image",
+          ocr_status: "completed"
         })
 
       assert :ok ==
@@ -60,6 +61,43 @@ defmodule Instabot.Workers.SendDigestTest do
 
       digest = Notifications.last_digest_for_user(user.id, "weekly")
       assert %{digest_type: "weekly", posts_count: 0, stories_count: 1} = digest
+    end
+
+    test "runs pending story OCR before sending digest", %{user: user, profile: profile} do
+      {:ok, _story} =
+        Instagram.create_story(profile.id, %{
+          instagram_story_id: "pending_ocr_story_#{System.unique_integer([:positive])}",
+          story_type: "image",
+          screenshot_path: "/tmp/pending_ocr_story.png",
+          ocr_status: "pending"
+        })
+
+      assert :ok ==
+               SendDigest.perform(%Oban.Job{
+                 args: %{"user_id" => user.id, "digest_type" => "daily"}
+               })
+
+      assert %{digest_type: "daily", stories_count: 1} = Notifications.last_digest_for_user(user.id, "daily")
+    end
+
+    test "sends digest with pending OCR when OCR is excluded", %{user: user, profile: profile} do
+      preference = Notifications.get_or_create_preference(user.id)
+      {:ok, _preference} = Notifications.update_preference(preference, %{include_ocr: false})
+
+      {:ok, _story} =
+        Instagram.create_story(profile.id, %{
+          instagram_story_id: "excluded_ocr_story_#{System.unique_integer([:positive])}",
+          story_type: "image",
+          screenshot_path: "/tmp/excluded_ocr_story.png",
+          ocr_status: "pending"
+        })
+
+      assert :ok ==
+               SendDigest.perform(%Oban.Job{
+                 args: %{"user_id" => user.id, "digest_type" => "daily"}
+               })
+
+      assert %{digest_type: "daily", stories_count: 1} = Notifications.last_digest_for_user(user.id, "daily")
     end
 
     test "uses previous digest period_end as new period_start", %{user: user, profile: profile} do

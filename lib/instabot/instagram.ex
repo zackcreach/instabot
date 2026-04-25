@@ -166,6 +166,20 @@ defmodule Instabot.Instagram do
     |> Repo.insert()
   end
 
+  def upsert_story_from_scrape(tracked_profile_id, attrs) do
+    case get_story_by_instagram_id(tracked_profile_id, attrs[:instagram_story_id] || attrs["instagram_story_id"]) do
+      nil ->
+        tracked_profile_id
+        |> create_story(attrs)
+        |> tag_story_result(:inserted)
+
+      %Story{} = story ->
+        story
+        |> Story.changeset(scrape_update_attrs(story, attrs))
+        |> update_scraped_story()
+    end
+  end
+
   def count_stories(user_id) do
     Story
     |> join(:inner, [s], tp in TrackedProfile, on: s.tracked_profile_id == tp.id)
@@ -186,6 +200,13 @@ defmodule Instabot.Instagram do
     |> where(tracked_profile_id: ^tracked_profile_id)
     |> where([s], s.ocr_status == "pending" and not is_nil(s.screenshot_path))
     |> Repo.all()
+  end
+
+  def count_stories_waiting_for_ocr(tracked_profile_id) do
+    Story
+    |> where(tracked_profile_id: ^tracked_profile_id)
+    |> where([s], s.ocr_status in ["pending", "processing"] and not is_nil(s.screenshot_path))
+    |> Repo.aggregate(:count)
   end
 
   def get_new_posts_since(user_id, since) do
@@ -234,11 +255,17 @@ defmodule Instabot.Instagram do
     Repo.get_by(Post, tracked_profile_id: tracked_profile_id, instagram_post_id: instagram_post_id)
   end
 
-  defp scrape_update_attrs(post, attrs) do
+  defp get_story_by_instagram_id(_tracked_profile_id, instagram_story_id) when instagram_story_id in [nil, ""], do: nil
+
+  defp get_story_by_instagram_id(tracked_profile_id, instagram_story_id) do
+    Repo.get_by(Story, tracked_profile_id: tracked_profile_id, instagram_story_id: instagram_story_id)
+  end
+
+  defp scrape_update_attrs(record, attrs) do
     attrs
     |> normalize_attrs()
     |> Enum.reject(fn {key, value} ->
-      blank_scrape_value?(key, value) and not blank_existing_value?(Map.get(post, key))
+      blank_scrape_value?(key, value) and not blank_existing_value?(Map.get(record, key))
     end)
     |> Map.new()
   end
@@ -268,6 +295,18 @@ defmodule Instabot.Instagram do
     |> tag_post_result(:updated)
   end
 
+  defp update_scraped_story(%Ecto.Changeset{changes: changes, data: story}) when changes == %{},
+    do: {:ok, story, :unchanged}
+
+  defp update_scraped_story(changeset) do
+    changeset
+    |> Repo.update()
+    |> tag_story_result(:updated)
+  end
+
   defp tag_post_result({:ok, post}, status), do: {:ok, post, status}
   defp tag_post_result({:error, changeset}, _status), do: {:error, changeset}
+
+  defp tag_story_result({:ok, story}, status), do: {:ok, story, status}
+  defp tag_story_result({:error, changeset}, _status), do: {:error, changeset}
 end

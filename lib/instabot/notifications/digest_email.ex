@@ -7,6 +7,7 @@ defmodule Instabot.Notifications.DigestEmail do
   import Swoosh.Email
 
   alias Instabot.Accounts.User
+  alias Instabot.Media
   alias Instabot.Notifications.NotificationPreference
 
   @spec build(User.t(), NotificationPreference.t(), map()) :: Swoosh.Email.t()
@@ -96,8 +97,7 @@ defmodule Instabot.Notifications.DigestEmail do
       Enum.map(stories, fn story ->
         lines = [
           "@#{story.tracked_profile.instagram_username} · #{story.story_type}",
-          (preference.include_ocr and story.ocr_text not in [nil, ""]) &&
-            "  OCR: #{String.slice(story.ocr_text, 0, 300)}"
+          text_story_ocr_line(story, preference)
         ]
 
         lines |> Enum.filter(& &1) |> Enum.join("\n")
@@ -179,12 +179,8 @@ defmodule Instabot.Notifications.DigestEmail do
 
     items =
       Enum.map(posts, fn post ->
-        image_line =
-          if preference.include_images and post.media_urls != [] do
-            "<p style=\"margin:4px 0 0;color:#71717a;font-size:13px;\">#{length(post.media_urls)} #{pluralize(length(post.media_urls), "image", "images")}</p>"
-          else
-            ""
-          end
+        media_urls = post_media_urls(post)
+        image_grid = html_media_grid(media_urls, preference)
 
         caption_line =
           if post.caption && post.caption != "" do
@@ -207,9 +203,9 @@ defmodule Instabot.Notifications.DigestEmail do
             @#{html_escape(post.tracked_profile.instagram_username)}
             <span style="font-weight:400;color:#a1a1aa;margin-left:6px;">#{html_escape(post.post_type)}</span>
           </p>
+          #{image_grid}
           #{caption_line}
           #{permalink_line}
-          #{image_line}
         </div>
         """
       end)
@@ -231,14 +227,10 @@ defmodule Instabot.Notifications.DigestEmail do
 
     items =
       Enum.map(stories, fn story ->
-        ocr_line =
-          if preference.include_ocr and story.ocr_text not in [nil, ""] do
-            excerpt = story.ocr_text |> String.slice(0, 300) |> html_escape()
+        preview_url = story_preview_url(story)
+        preview = html_story_preview(preview_url, preference)
 
-            "<p style=\"margin:6px 0 0;color:#3f3f46;font-size:13px;line-height:1.5;font-style:italic;\">\"#{excerpt}\"</p>"
-          else
-            ""
-          end
+        ocr_line = html_story_ocr_line(story, preference)
 
         """
         <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #f4f4f5;">
@@ -246,6 +238,7 @@ defmodule Instabot.Notifications.DigestEmail do
             @#{html_escape(story.tracked_profile.instagram_username)}
             <span style="font-weight:400;color:#a1a1aa;margin-left:6px;">#{html_escape(story.story_type)}</span>
           </p>
+          #{preview}
           #{ocr_line}
         </div>
         """
@@ -256,6 +249,123 @@ defmodule Instabot.Notifications.DigestEmail do
 
   defp html_escape(nil), do: ""
   defp html_escape(str), do: str |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+  defp text_story_ocr_line(_story, %{include_ocr: false}), do: nil
+
+  defp text_story_ocr_line(%{ocr_text: text}, _preference) when is_binary(text) and text != "" do
+    "  OCR: #{String.slice(text, 0, 300)}"
+  end
+
+  defp text_story_ocr_line(%{ocr_status: "pending"}, _preference), do: "  OCR: pending"
+  defp text_story_ocr_line(%{ocr_status: "processing"}, _preference), do: "  OCR: processing"
+  defp text_story_ocr_line(%{ocr_status: "failed"}, _preference), do: "  OCR: failed"
+  defp text_story_ocr_line(%{ocr_status: "completed"}, _preference), do: "  OCR: no text detected"
+  defp text_story_ocr_line(_story, _preference), do: "  OCR: not available"
+
+  defp html_story_ocr_line(_story, %{include_ocr: false}), do: ""
+
+  defp html_story_ocr_line(%{ocr_text: text}, _preference) when is_binary(text) and text != "" do
+    excerpt = text |> String.slice(0, 300) |> html_escape()
+
+    "<p style=\"margin:8px 0 0;color:#3f3f46;font-size:13px;line-height:1.5;font-style:italic;\">\"#{excerpt}\"</p>"
+  end
+
+  defp html_story_ocr_line(story, _preference) do
+    label =
+      story
+      |> ocr_status_label()
+      |> html_escape()
+
+    "<p style=\"margin:8px 0 0;color:#71717a;font-size:12px;line-height:1.4;\">OCR: #{label}</p>"
+  end
+
+  defp ocr_status_label(%{ocr_status: "pending"}), do: "pending"
+  defp ocr_status_label(%{ocr_status: "processing"}), do: "processing"
+  defp ocr_status_label(%{ocr_status: "failed"}), do: "failed"
+  defp ocr_status_label(%{ocr_status: "completed"}), do: "no text detected"
+  defp ocr_status_label(_story), do: "not available"
+
+  defp html_media_grid(_media_urls, %{include_images: false}), do: ""
+  defp html_media_grid([], _preference), do: ""
+
+  defp html_media_grid(media_urls, _preference) do
+    cells =
+      media_urls
+      |> Enum.take(3)
+      |> Enum.map_join(fn url ->
+        """
+        <td width="33.333%" style="padding:0 6px 0 0;vertical-align:top;">
+          <img src="#{html_escape(url)}" alt="Instagram post preview" width="172" style="display:block;width:100%;max-width:172px;height:172px;object-fit:cover;border-radius:8px;background:#f4f4f5;" />
+        </td>
+        """
+      end)
+
+    count_label =
+      case length(media_urls) do
+        count when count > 3 ->
+          "<p style=\"margin:8px 0 0;color:#71717a;font-size:12px;\">+#{count - 3} more #{pluralize(count - 3, "image", "images")}</p>"
+
+        _ ->
+          ""
+      end
+
+    """
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0 0;">
+      <tr>
+        #{cells}
+      </tr>
+    </table>
+    #{count_label}
+    """
+  end
+
+  defp html_story_preview(_preview_url, %{include_images: false}), do: ""
+  defp html_story_preview(nil, _preference), do: ""
+
+  defp html_story_preview(preview_url, _preference) do
+    """
+    <div style="margin:12px 0 0;">
+      <img src="#{html_escape(preview_url)}" alt="Instagram story screenshot" width="180" style="display:block;width:180px;max-width:100%;height:320px;object-fit:cover;border-radius:8px;background:#f4f4f5;" />
+    </div>
+    """
+  end
+
+  defp post_media_urls(%{post_images: post_images}) when is_list(post_images) and post_images != [] do
+    post_images
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(&absolute_media_url(&1.local_path))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp post_media_urls(%{media_urls: media_urls}) when is_list(media_urls) do
+    media_urls
+    |> Enum.map(&absolute_media_url/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp post_media_urls(_post), do: []
+
+  defp story_preview_url(%{screenshot_path: screenshot_path}) when is_binary(screenshot_path) and screenshot_path != "" do
+    absolute_media_url(screenshot_path)
+  end
+
+  defp story_preview_url(%{media_url: media_url}) when is_binary(media_url) and media_url != "" do
+    absolute_media_url(media_url)
+  end
+
+  defp story_preview_url(_story), do: nil
+
+  defp absolute_media_url(nil), do: nil
+  defp absolute_media_url(""), do: nil
+
+  defp absolute_media_url(url) do
+    url
+    |> Media.to_url()
+    |> absolute_url()
+  end
+
+  defp absolute_url("/" <> _ = path), do: InstabotWeb.Endpoint.url() <> path
+  defp absolute_url(url), do: url
 
   defp format_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
   defp format_datetime(_), do: "N/A"

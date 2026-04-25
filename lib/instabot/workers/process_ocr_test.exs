@@ -1,11 +1,14 @@
 defmodule Instabot.Workers.ProcessOCRTest do
   use Instabot.DataCase, async: true
+  use Oban.Testing, repo: Instabot.Repo
 
   import Instabot.AccountsFixtures
   import Instabot.InstagramFixtures
 
   alias Instabot.Instagram
+  alias Instabot.Notifications
   alias Instabot.Workers.ProcessOCR
+  alias Instabot.Workers.SendImmediateNotification
 
   setup do
     user = user_fixture()
@@ -41,6 +44,37 @@ defmodule Instabot.Workers.ProcessOCRTest do
 
       refreshed = Instagram.get_story!(story.id)
       assert "failed" == refreshed.ocr_status
+    end
+
+    test "enqueues immediate notification after terminal OCR result", %{story: story, profile: profile} do
+      preference = Notifications.get_or_create_preference(profile.user_id)
+      {:ok, _preference} = Notifications.update_preference(preference, %{frequency: "immediate"})
+
+      assert {:error, reason} = ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
+      assert reason in [:file_not_found, :tesseract_not_installed]
+
+      assert_enqueued(worker: SendImmediateNotification, args: %{user_id: profile.user_id})
+    end
+
+    test "does not enqueue immediate notification while another story is waiting for OCR", %{
+      story: story,
+      profile: profile
+    } do
+      preference = Notifications.get_or_create_preference(profile.user_id)
+      {:ok, _preference} = Notifications.update_preference(preference, %{frequency: "immediate"})
+
+      {:ok, _other_story} =
+        Instagram.create_story(profile.id, %{
+          instagram_story_id: "other_pending_#{System.unique_integer([:positive])}",
+          story_type: "image",
+          screenshot_path: "/tmp/other_pending_ocr.png",
+          ocr_status: "pending"
+        })
+
+      assert {:error, reason} = ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
+      assert reason in [:file_not_found, :tesseract_not_installed]
+
+      refute_enqueued(worker: SendImmediateNotification, args: %{user_id: profile.user_id})
     end
 
     test "sets status to failed when tesseract is not installed", %{story: story} do

@@ -218,11 +218,18 @@ defmodule InstabotWeb.FeedLiveTest do
     end
 
     test "direct navigation to /feed/posts/:id mounts with modal open", %{conn: conn, post: post} do
-      {:ok, _view, html} = live(conn, ~p"/feed/posts/#{post.id}")
+      {:ok, view, html} = live(conn, ~p"/feed/posts/#{post.id}")
 
       assert html =~ "post-modal"
       assert html =~ "mountain sunset"
-      assert html =~ "InstabotWeb.FeedLive.Lightbox"
+      refute html =~ "InstabotWeb.FeedLive.Lightbox"
+      assert has_element?(view, "#post-modal-image-link[href='https://example.com/a.jpg'][target='_blank']")
+    end
+
+    test "renders modal caption without preserved template indentation", %{conn: conn, post: post} do
+      {:ok, _view, html} = live(conn, ~p"/feed/posts/#{post.id}")
+
+      assert html =~ ~r/<p[^>]*id="post-modal-caption"[^>]*>mountain sunset<\/p>/
     end
 
     test "next/prev image navigation works within the carousel", %{conn: conn, post: post} do

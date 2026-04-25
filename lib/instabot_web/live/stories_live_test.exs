@@ -12,7 +12,14 @@ defmodule InstabotWeb.StoriesLiveTest do
 
   setup %{user: user} do
     profile = tracked_profile_fixture(user, %{instagram_username: "natgeo"})
-    story = story_fixture(profile, %{ocr_text: "breaking headline"})
+
+    story =
+      story_fixture(profile, %{
+        ocr_text: "breaking headline",
+        screenshot_path: nil,
+        media_url: "https://example.com/story.jpg"
+      })
+
     %{profile: profile, story: story}
   end
 
@@ -49,6 +56,37 @@ defmodule InstabotWeb.StoriesLiveTest do
       assert html =~ "older story"
       assert html =~ DateTimeFormatter.long_date(now)
       assert html =~ DateTimeFormatter.long_date(two_days_ago)
+    end
+
+    test "falls back to media URL when the screenshot file is missing", %{conn: conn, profile: profile} do
+      _story =
+        story_fixture(profile, %{
+          instagram_story_id: "missing_screenshot_story",
+          screenshot_path: "priv/static/screenshots/missing-story.png",
+          media_url: "https://example.com/story-preview.jpg"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/feed/stories")
+
+      assert html =~ "https://example.com/story-preview.jpg"
+      refute html =~ "/screenshots/missing-story.png"
+    end
+
+    test "does not render blocked Instagram CDN media when the screenshot file is missing", %{
+      conn: conn,
+      profile: profile
+    } do
+      _story =
+        story_fixture(profile, %{
+          instagram_story_id: "blocked_cdn_story",
+          screenshot_path: "priv/static/screenshots/missing-cdn-story.png",
+          media_url: "https://scontent-atl3-1.cdninstagram.com/story.jpg"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/feed/stories")
+
+      refute html =~ "https://scontent-atl3-1.cdninstagram.com/story.jpg"
+      refute html =~ "/screenshots/missing-cdn-story.png"
     end
   end
 
@@ -115,7 +153,8 @@ defmodule InstabotWeb.StoriesLiveTest do
       assert html =~ "story-modal"
       assert html =~ "breaking headline"
       assert html =~ "EXTRACTED TEXT"
-      assert html =~ "InstabotWeb.StoriesLive.Lightbox"
+      refute html =~ "InstabotWeb.StoriesLive.Lightbox"
+      assert has_element?(view, "#story-modal-image-link[href='https://example.com/story.jpg'][target='_blank']")
       assert_patched(view, ~p"/feed/stories/#{story.id}")
     end
 

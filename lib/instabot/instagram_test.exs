@@ -77,4 +77,60 @@ defmodule Instabot.InstagramTest do
       assert "https://instagram.com/p/rich_post" == updated_post.permalink
     end
   end
+
+  describe "upsert_story_from_scrape/2" do
+    test "updates an existing story with a refreshed screenshot path" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+      posted_at = DateTime.utc_now(:second)
+
+      story =
+        story_fixture(profile, %{
+          instagram_story_id: "same_story",
+          screenshot_path: "priv/static/screenshots/missing.png",
+          media_url: nil,
+          posted_at: posted_at
+        })
+
+      assert {:ok, updated_story, :updated} =
+               Instagram.upsert_story_from_scrape(profile.id, %{
+                 instagram_story_id: "same_story",
+                 story_type: "image",
+                 screenshot_path: "priv/static/screenshots/refreshed.png",
+                 media_url: "https://example.com/story.jpg",
+                 posted_at: posted_at,
+                 expires_at: DateTime.add(posted_at, 1, :day)
+               })
+
+      assert story.id == updated_story.id
+      assert "priv/static/screenshots/refreshed.png" == updated_story.screenshot_path
+      assert "https://example.com/story.jpg" == updated_story.media_url
+    end
+
+    test "does not replace useful story details with blank scrape data" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+
+      story =
+        story_fixture(profile, %{
+          instagram_story_id: "rich_story",
+          screenshot_path: "priv/static/screenshots/story.png",
+          media_url: "https://example.com/story.jpg"
+        })
+
+      assert {:ok, updated_story, :unchanged} =
+               Instagram.upsert_story_from_scrape(profile.id, %{
+                 instagram_story_id: "rich_story",
+                 story_type: "image",
+                 screenshot_path: nil,
+                 media_url: nil,
+                 posted_at: nil,
+                 expires_at: nil
+               })
+
+      assert story.id == updated_story.id
+      assert "priv/static/screenshots/story.png" == updated_story.screenshot_path
+      assert "https://example.com/story.jpg" == updated_story.media_url
+    end
+  end
 end

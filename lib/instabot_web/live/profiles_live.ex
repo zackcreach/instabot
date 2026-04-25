@@ -219,7 +219,7 @@ defmodule InstabotWeb.ProfilesLive do
     user_id = socket.assigns.current_scope.user.id
 
     case Instagram.create_tracked_profile(user_id, params) do
-      {:ok, _profile} ->
+      {:ok, profile} ->
         profiles = Instagram.list_tracked_profiles(user_id)
         changeset = Instagram.change_tracked_profile(%TrackedProfile{})
 
@@ -228,9 +228,8 @@ defmodule InstabotWeb.ProfilesLive do
           |> assign(:profiles, profiles)
           |> assign(:show_form, false)
           |> assign_form(changeset)
-          |> put_flash(:info, "Profile @#{params["instagram_username"]} added successfully.")
 
-        {:noreply, socket}
+        {:noreply, handle_profile_created_scrape(socket, profile)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
@@ -256,13 +255,11 @@ defmodule InstabotWeb.ProfilesLive do
     user_id = socket.assigns.current_scope.user.id
     profile = Instagram.get_tracked_profile_for_user!(user_id, id)
 
-    case %{tracked_profile_id: profile.id} |> ScrapeProfile.new() |> Oban.insert() do
+    case enqueue_profile_scrape(profile) do
       {:ok, %{conflict?: true}} ->
         {:noreply, put_flash(socket, :info, "Scrape for @#{profile.instagram_username} already queued.")}
 
-      {:ok, _job} ->
-        event = Events.broadcast(profile, :queued)
-
+      {:ok, _job, event} ->
         socket =
           socket
           |> assign(:scrape_states, put_scrape_state(socket.assigns.scrape_states, event))
@@ -305,6 +302,29 @@ defmodule InstabotWeb.ProfilesLive do
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     assign(socket, :form, to_form(changeset))
+  end
+
+  defp handle_profile_created_scrape(socket, profile) do
+    case enqueue_profile_scrape(profile) do
+      {:ok, %{conflict?: true}} ->
+        put_flash(socket, :info, "Profile @#{profile.instagram_username} added successfully.")
+
+      {:ok, _job, event} ->
+        socket
+        |> assign(:scrape_states, put_scrape_state(socket.assigns.scrape_states, event))
+        |> put_flash(:info, "Profile @#{profile.instagram_username} added and scrape queued.")
+
+      {:error, _reason} ->
+        put_flash(socket, :error, "Profile @#{profile.instagram_username} added, but the scrape could not be queued.")
+    end
+  end
+
+  defp enqueue_profile_scrape(profile) do
+    case %{tracked_profile_id: profile.id} |> ScrapeProfile.new() |> Oban.insert() do
+      {:ok, %{conflict?: true} = job} -> {:ok, job}
+      {:ok, job} -> {:ok, job, Events.broadcast(profile, :queued)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp format_last_scraped(nil), do: "Never"

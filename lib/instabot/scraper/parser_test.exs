@@ -218,6 +218,78 @@ defmodule Instabot.Scraper.ParserTest do
     end
   end
 
+  describe "extract_post_details_from_responses/2" do
+    test "extracts post details from GraphQL shortcode media responses" do
+      responses = [
+        %{
+          "url" => "https://www.instagram.com/graphql/query",
+          "body" => %{
+            "data" => %{
+              "xdt_shortcode_media" => %{
+                "shortcode" => "ABC123def",
+                "edge_media_to_caption" => %{
+                  "edges" => [
+                    %{"node" => %{"text" => "JSON caption #Vintage"}}
+                  ]
+                },
+                "taken_at_timestamp" => 1_774_112_400,
+                "display_url" => "https://cdn.instagram.com/post.jpg",
+                "__typename" => "GraphImage"
+              }
+            }
+          }
+        }
+      ]
+
+      details = Parser.extract_post_details_from_responses(responses, "ABC123def")
+
+      assert %{
+               caption: "JSON caption #Vintage",
+               hashtags: ["vintage"],
+               media_urls: ["https://cdn.instagram.com/post.jpg"],
+               post_type: "image",
+               posted_at: ~U[2026-03-21 17:00:00Z]
+             } == details
+    end
+
+    test "extracts carousel media URLs from nested response items" do
+      responses = [
+        %{
+          "body" => %{
+            "items" => [
+              %{
+                "code" => "CAROUSEL1",
+                "caption" => %{"text" => "Carousel post"},
+                "carousel_media" => [
+                  %{"image_versions2" => %{"candidates" => [%{"url" => "https://cdn.instagram.com/one.jpg"}]}},
+                  %{"video_versions" => [%{"url" => "https://cdn.instagram.com/two.mp4"}]}
+                ]
+              }
+            ]
+          }
+        }
+      ]
+
+      details = Parser.extract_post_details_from_responses(responses, "CAROUSEL1")
+
+      assert "Carousel post" == details.caption
+      assert "carousel" == details.post_type
+
+      assert [
+               "https://cdn.instagram.com/one.jpg",
+               "https://cdn.instagram.com/two.mp4"
+             ] == details.media_urls
+    end
+
+    test "returns nil when responses do not include the shortcode" do
+      responses = [
+        %{"body" => %{"items" => [%{"code" => "OTHER", "display_url" => "https://cdn.instagram.com/post.jpg"}]}}
+      ]
+
+      assert nil == Parser.extract_post_details_from_responses(responses, "MISSING")
+    end
+  end
+
   describe "extract_profile_metadata/1" do
     test "extracts display name and profile image from profile page meta tags" do
       html = """

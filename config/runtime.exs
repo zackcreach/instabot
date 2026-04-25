@@ -20,11 +20,34 @@ if System.get_env("PHX_SERVER") do
   config :instabot, InstabotWeb.Endpoint, server: true
 end
 
-config :instabot, InstabotWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+port = String.to_integer(System.get_env("PORT", "4000"))
 
-if bridge = System.get_env("INSTABOT_BRIDGE_SCRIPT") do
-  scraper_config = Application.get_env(:instabot, Instabot.Scraper, [])
-  config :instabot, Instabot.Scraper, Keyword.put(scraper_config, :bridge_script, bridge)
+scraper_config = Application.get_env(:instabot, Instabot.Scraper, [])
+
+scraper_config =
+  case System.get_env("INSTABOT_PLAYWRIGHT_PATH") do
+    nil -> scraper_config
+    playwright_path -> Keyword.put(scraper_config, :playwright_path, playwright_path)
+  end
+
+scraper_config =
+  case System.get_env("INSTABOT_BRIDGE_SCRIPT") do
+    nil -> scraper_config
+    bridge -> Keyword.put(scraper_config, :bridge_script, bridge)
+  end
+
+scraper_config =
+  case System.get_env("INSTABOT_SCREENSHOT_DIR") do
+    nil -> scraper_config
+    screenshot_dir -> Keyword.put(scraper_config, :screenshot_dir, screenshot_dir)
+  end
+
+config :instabot, Instabot.Scraper, scraper_config
+config :instabot, InstabotWeb.Endpoint, http: [port: port]
+
+case System.get_env("INSTABOT_UPLOADS_DIR") do
+  nil -> :ok
+  uploads_dir -> config :instabot, :uploads_dir, uploads_dir
 end
 
 if config_env() == :prod do
@@ -50,6 +73,8 @@ if config_env() == :prod do
       """
 
   host = System.get_env("PHX_HOST") || "example.com"
+  scheme = System.get_env("PHX_SCHEME") || "http"
+  url_port = String.to_integer(System.get_env("PHX_PORT") || Integer.to_string(port))
 
   mailgun_api_key =
     System.get_env("MAILGUN_API_KEY") ||
@@ -79,7 +104,7 @@ if config_env() == :prod do
     socket_options: maybe_ipv6
 
   config :instabot, InstabotWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
+    url: [host: host, port: url_port, scheme: scheme],
     http: [
       # Enable IPv6 and bind on all interfaces.
       #
@@ -104,14 +129,6 @@ if config_env() == :prod do
       # and cert in disk or a relative path inside priv, for example
       # "priv/ssl/server.key". For all supported SSL configuration
       # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
-      #
-      # We also recommend setting `force_ssl` in your config/prod.exs,
-      # ensuring no data is ever sent via http, always redirecting to https:
-      #
-      #     config :instabot, InstabotWeb.Endpoint,
-      #       force_ssl: [hsts: true]
-      #
-      # Check `Plug.SSL` for all available options in `force_ssl`.
 
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],

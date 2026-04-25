@@ -1,0 +1,16 @@
+_build
+deps
+assets/node_modules
+assets/playwright/dist
+assets/coverage
+cover
+priv/static/assets
+priv/static/cache_manifest.json
+priv/static/uploads
+priv/static/screenshots
+priv/static/screenshots_test
+test
+creachignore/db_backups
+/*.png
+erl_crash.dump
+.git

@@ -24,6 +24,7 @@ defmodule Instabot.Scraper.AntiDetection do
   @chromium_args [
     "--disable-blink-features=AutomationControlled",
     "--disable-dev-shm-usage",
+    "--no-sandbox",
     "--no-first-run",
     "--no-default-browser-check"
   ]

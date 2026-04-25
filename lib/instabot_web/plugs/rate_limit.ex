@@ -5,13 +5,13 @@ defmodule InstabotWeb.Plugs.RateLimit do
   def init(opts) do
     scale_ms = Keyword.fetch!(opts, :scale_ms)
     limit = Keyword.fetch!(opts, :limit)
-    key_func = Keyword.get(opts, :key_func, &default_key/1)
+    key_func = Keyword.get(opts, :key_func, {__MODULE__, :default_key})
     {scale_ms, limit, key_func}
   end
 
   def call(conn, {scale_ms, limit, key_func}) do
     if Application.get_env(:instabot, :rate_limiting_enabled, true) do
-      key = key_func.(conn)
+      key = rate_limit_key(key_func, conn)
       check_rate(conn, key, scale_ms, limit)
     else
       conn
@@ -31,8 +31,16 @@ defmodule InstabotWeb.Plugs.RateLimit do
     end
   end
 
-  defp default_key(conn) do
+  def default_key(conn) do
     ip = conn.remote_ip |> :inet.ntoa() |> to_string()
     "rate_limit:#{conn.request_path}:#{ip}"
+  end
+
+  defp rate_limit_key({module, function}, conn) do
+    apply(module, function, [conn])
+  end
+
+  defp rate_limit_key(key_func, conn) do
+    key_func.(conn)
   end
 end

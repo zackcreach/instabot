@@ -1,0 +1,70 @@
+services:
+  instabot:
+    build: .
+    image: instabot:latest
+    container_name: instabot
+    ports:
+      - "4002:4002"
+    environment:
+      - PHX_SERVER=true
+      - PHX_HOST=symphony
+      - PHX_SCHEME=http
+      - PHX_PORT=4002
+      - PORT=4002
+      - POOL_SIZE=10
+      - MIX_ENV=prod
+      - DATABASE_URL=ecto://postgres:postgres@db:5432/instabot_prod
+      - INSTABOT_PLAYWRIGHT_PATH=/app/assets/playwright
+      - INSTABOT_BRIDGE_SCRIPT=/app/assets/playwright/dist/playwright_bridge.js
+      - INSTABOT_UPLOADS_DIR=/app/priv/static/uploads
+      - INSTABOT_SCREENSHOT_DIR=/app/priv/static/screenshots
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
+      - MAILGUN_FROM_EMAIL=${MAILGUN_FROM_EMAIL}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - instabot_network
+    volumes:
+      - uploads_data:/app/priv/static/uploads
+      - screenshots_data:/app/priv/static/screenshots
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  db:
+    image: postgres:16-alpine
+    container_name: instabot_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=instabot_prod
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - instabot_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+  screenshots_data:
+    driver: local
+
+networks:
+  instabot_network:
+    driver: bridge

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title default="Instabot">
+      {assigns[:page_title]}
+    </.live_title>
+    <script>
+      (() => {
+        const setTheme = (theme) => {
+          if (theme === "system") {
+            localStorage.removeItem("phx:theme");
+            document.documentElement.removeAttribute("data-theme");
+          } else {
+            localStorage.setItem("phx:theme", theme);
+            document.documentElement.setAttribute("data-theme", theme);
+          }
+        };
+        if (!document.documentElement.hasAttribute("data-theme")) {
+          setTheme(localStorage.getItem("phx:theme") || "system");
+        }
+        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
+        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+      })();
+    </script>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    </script>
+  </head>
+  <body>
+    <header class="navbar bg-base-200 px-4 sm:px-6 lg:px-8">
+      <div class="flex-1">
+        <a href={~p"/"} class="text-lg uppercase font-black tracking-tight">
+          instabot
+        </a>
+      </div>
+      <div class="flex-none">
+        <ul class="flex items-center gap-4 text-sm">
+          <%= if @current_scope do %>
+            <li>
+              <.link href={~p"/feed"} class="btn btn-ghost btn-sm">
+                Feed
+              </.link>
+            </li>
+            <li>
+              <.link href={~p"/profiles"} class="btn btn-ghost btn-sm">
+                Profiles
+              </.link>
+            </li>
+            <li>
+              <.link href={~p"/settings/notifications"} class="btn btn-ghost btn-sm">
+                Notifications
+              </.link>
+            </li>
+            <li class="hidden md:block text-xs opacity-70">
+              {@current_scope.user.email}
+            </li>
+            <li>
+              <.link href={~p"/users/settings"} class="btn btn-ghost btn-sm">
+                <.icon name="hero-cog-6-tooth" class="size-4" />
+              </.link>
+            </li>
+            <li>
+              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm">
+                Log out
+              </.link>
+            </li>
+          <% else %>
+            <li>
+              <.link href={~p"/users/register"} class="btn btn-ghost btn-sm">
+                Register
+              </.link>
+            </li>
+            <li>
+              <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm">
+                Log in
+              </.link>
+            </li>
+          <% end %>
+          <li>
+            <Layouts.theme_toggle />
+          </li>
+        </ul>
+      </div>
+    </header>
+    {@inner_content}
+  </body>
+</html>

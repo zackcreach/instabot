@@ -4,8 +4,6 @@ defmodule InstabotWeb.UserLive.Settings do
 
   alias Instabot.Accounts
 
-  on_mount {InstabotWeb.UserAuth, :require_sudo_mode}
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -16,6 +14,24 @@ defmodule InstabotWeb.UserLive.Settings do
           <p class="text-sm mt-2 mb-4">Manage your account email address and password settings.</p>
 
           <div class="flex flex-col gap-y-12">
+            <div>
+              <h4 class="font-semibold mb-2">Account</h4>
+              <div class="flex items-center justify-between gap-4 rounded-lg bg-base-200 px-4 py-3">
+                <span class="min-w-0 truncate text-sm opacity-80">{@current_email}</span>
+                <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm shrink-0">
+                  Log out
+                </.link>
+              </div>
+            </div>
+
+            <div>
+              <h4 class="font-semibold mb-2">Appearance</h4>
+              <p class="text-sm opacity-70 mb-3">Choose the color theme for this browser.</p>
+              <div id="theme-settings" class="w-36">
+                <Layouts.theme_toggle />
+              </div>
+            </div>
+
             <div>
               <.form
                 for={@email_form}
@@ -127,21 +143,24 @@ defmodule InstabotWeb.UserLive.Settings do
   def handle_event("update_email", params, socket) do
     %{"user" => user_params} = params
     user = socket.assigns.current_scope.user
-    true = Accounts.sudo_mode?(user)
 
-    case Accounts.change_user_email(user, user_params) do
-      %{valid?: true} = changeset ->
-        Accounts.deliver_user_update_email_instructions(
-          Ecto.Changeset.apply_action!(changeset, :insert),
-          user.email,
-          &url(~p"/users/settings/confirm-email/#{&1}")
-        )
+    if Accounts.sudo_mode?(user) do
+      case Accounts.change_user_email(user, user_params) do
+        %{valid?: true} = changeset ->
+          Accounts.deliver_user_update_email_instructions(
+            Ecto.Changeset.apply_action!(changeset, :insert),
+            user.email,
+            &url(~p"/users/settings/confirm-email/#{&1}")
+          )
 
-        info = "A link to confirm your email change has been sent to the new address."
-        {:noreply, put_flash(socket, :info, info)}
+          info = "A link to confirm your email change has been sent to the new address."
+          {:noreply, put_flash(socket, :info, info)}
 
-      changeset ->
-        {:noreply, assign(socket, :email_form, to_form(changeset, action: :insert))}
+        changeset ->
+          {:noreply, assign(socket, :email_form, to_form(changeset, action: :insert))}
+      end
+    else
+      {:noreply, require_reauthentication(socket)}
     end
   end
 
@@ -160,14 +179,23 @@ defmodule InstabotWeb.UserLive.Settings do
   def handle_event("update_password", params, socket) do
     %{"user" => user_params} = params
     user = socket.assigns.current_scope.user
-    true = Accounts.sudo_mode?(user)
 
-    case Accounts.change_user_password(user, user_params) do
-      %{valid?: true} = changeset ->
-        {:noreply, assign(socket, trigger_submit: true, password_form: to_form(changeset))}
+    if Accounts.sudo_mode?(user) do
+      case Accounts.change_user_password(user, user_params) do
+        %{valid?: true} = changeset ->
+          {:noreply, assign(socket, trigger_submit: true, password_form: to_form(changeset))}
 
-      changeset ->
-        {:noreply, assign(socket, password_form: to_form(changeset, action: :insert))}
+        changeset ->
+          {:noreply, assign(socket, password_form: to_form(changeset, action: :insert))}
+      end
+    else
+      {:noreply, require_reauthentication(socket)}
     end
+  end
+
+  defp require_reauthentication(socket) do
+    socket
+    |> put_flash(:error, "You must re-authenticate before changing account settings.")
+    |> redirect(to: ~p"/users/log-in")
   end
 end

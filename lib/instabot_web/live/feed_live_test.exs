@@ -5,6 +5,8 @@ defmodule InstabotWeb.FeedLiveTest do
   import Instabot.InstagramFixtures
   import Phoenix.LiveViewTest
 
+  alias Instabot.Instagram.Events
+
   setup :register_and_log_in_user
 
   setup %{user: user} do
@@ -57,12 +59,39 @@ defmodule InstabotWeb.FeedLiveTest do
         post_fixture(profile, %{
           instagram_post_id: "caption_date_post",
           caption: "1,762 likes, 70 comments - natgeo on October 5, 2023: &quot;Sometimes...&quot;",
-          posted_at: nil
+          posted_at: ~U[2023-10-05 12:00:00Z]
         })
 
       {:ok, _view, html} = live(conn, ~p"/feed")
 
       assert html =~ "Oct 05, 2023"
+    end
+
+    test "trims scraped metadata from quoted captions", %{conn: conn, profile: profile} do
+      _post =
+        post_fixture(profile, %{
+          instagram_post_id: "quoted_caption_post",
+          caption: "1,762 likes, 70 comments - natgeo on October 5, 2023: &quot;Sometimes...&quot;"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/feed")
+
+      assert html =~ "Sometimes..."
+      refute html =~ "1,762 likes"
+    end
+
+    test "decodes escaped Instagram caption entities", %{conn: conn, profile: profile} do
+      _post =
+        post_fixture(profile, %{
+          instagram_post_id: "escaped_caption_post",
+          caption: "1,762 likes, 70 comments - natgeo on October 5, 2023: &quot;Donald Glover &amp; friends&quot;."
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/feed")
+
+      assert html =~ "Donald Glover &amp; friends"
+      refute html =~ "&amp;amp;"
+      refute html =~ "&amp;quot"
     end
   end
 
@@ -133,6 +162,22 @@ defmodule InstabotWeb.FeedLiveTest do
 
       assert html =~ "mountain sunset"
       refute html =~ "planet earth"
+    end
+  end
+
+  describe "PubSub instagram_event" do
+    test "refreshes posts when a new post is created", %{conn: conn, profile: profile} do
+      {:ok, view, _html} = live(conn, ~p"/feed")
+
+      post =
+        post_fixture(profile, %{
+          instagram_post_id: "fresh_pubsub_post",
+          caption: "fresh websocket post"
+        })
+
+      Events.broadcast_post_created(profile, post)
+
+      assert has_element?(view, "#post-#{post.id}")
     end
   end
 

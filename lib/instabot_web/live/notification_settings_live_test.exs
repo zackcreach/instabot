@@ -1,7 +1,6 @@
 defmodule InstabotWeb.NotificationSettingsLiveTest do
   use InstabotWeb.ConnCase, async: true
 
-  import Instabot.AccountsFixtures
   import Phoenix.LiveViewTest
 
   setup :register_and_log_in_user

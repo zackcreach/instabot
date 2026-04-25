@@ -1,11 +1,13 @@
 defmodule Instabot.Instagram.FeedTest do
   use Instabot.DataCase, async: true
 
+  import Ecto.Query
   import Instabot.AccountsFixtures
   import Instabot.InstagramFixtures
 
   alias Ecto.Association.NotLoaded
   alias Instabot.Instagram.Feed
+  alias Instabot.Repo
 
   setup do
     user = user_fixture()
@@ -37,6 +39,24 @@ defmodule Instabot.Instagram.FeedTest do
       assert older_post.id == second.id
     end
 
+    test "orders posts without posted_at after dated posts", %{user: user} do
+      profile = tracked_profile_fixture(user)
+      now = DateTime.utc_now(:second)
+
+      old_dated_post = post_fixture(profile, %{posted_at: DateTime.add(now, -365, :day)})
+      recent_undated_post = post_fixture(profile, %{posted_at: nil})
+
+      {1, nil} =
+        Repo.update_all(
+          from(p in Instabot.Instagram.Post, where: p.id == ^recent_undated_post.id),
+          set: [inserted_at: now]
+        )
+
+      assert [first, second] = Feed.list_posts(user.id)
+      assert old_dated_post.id == first.id
+      assert recent_undated_post.id == second.id
+    end
+
     test "filters by profile_id", %{user: user} do
       profile_a = tracked_profile_fixture(user, %{instagram_username: "alpha"})
       profile_b = tracked_profile_fixture(user, %{instagram_username: "bravo"})
@@ -54,6 +74,22 @@ defmodule Instabot.Instagram.FeedTest do
 
       assert [returned] = Feed.list_posts(user.id, profile_id: "")
       assert post.id == returned.id
+    end
+
+    test "excludes posts without media or captions", %{user: user} do
+      profile = tracked_profile_fixture(user)
+
+      visible_post = post_fixture(profile)
+
+      _empty_post =
+        post_fixture(profile, %{
+          instagram_post_id: "empty_post",
+          caption: "",
+          media_urls: []
+        })
+
+      assert [returned] = Feed.list_posts(user.id)
+      assert visible_post.id == returned.id
     end
 
     test "filters by search in caption", %{user: user} do
@@ -121,6 +157,21 @@ defmodule Instabot.Instagram.FeedTest do
       for _ <- 1..2, do: post_fixture(profile_b)
 
       assert 3 == Feed.count_posts(user.id, profile_id: profile_a.id)
+    end
+
+    test "count excludes posts without media or captions", %{user: user} do
+      profile = tracked_profile_fixture(user)
+
+      _visible_post = post_fixture(profile)
+
+      _empty_post =
+        post_fixture(profile, %{
+          instagram_post_id: "empty_count_post",
+          caption: "",
+          media_urls: []
+        })
+
+      assert 1 == Feed.count_posts(user.id)
     end
   end
 

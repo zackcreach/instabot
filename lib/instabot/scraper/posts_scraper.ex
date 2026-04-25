@@ -6,6 +6,7 @@ defmodule Instabot.Scraper.PostsScraper do
 
   alias Instabot.Encryption
   alias Instabot.Instagram
+  alias Instabot.Instagram.Events
   alias Instabot.Instagram.InstagramConnection
   alias Instabot.Instagram.TrackedProfile
   alias Instabot.Scraper.AntiDetection
@@ -35,9 +36,11 @@ defmodule Instabot.Scraper.PostsScraper do
     max_posts = Keyword.get(opts, :max_posts, 12)
 
     with {:ok, browser} <- ScraperSupervisor.start_browser() do
-      result = scrape_with_browser(browser, username, session_data, max_posts)
-      Browser.stop(browser)
-      result
+      try do
+        scrape_with_browser(browser, username, session_data, max_posts)
+      after
+        Browser.stop(browser)
+      end
     end
   end
 
@@ -51,18 +54,7 @@ defmodule Instabot.Scraper.PostsScraper do
   def scrape_and_persist(%TrackedProfile{} = profile, %InstagramConnection{} = connection, opts \\ []) do
     case Instagram.create_scrape_log(profile.id, %{scrape_type: "posts"}) do
       {:ok, log} ->
-        with {:ok, session_data} <- Encryption.decrypt_term(connection.encrypted_cookies),
-             {:ok, %{posts: posts, profile_metadata: profile_metadata}} <-
-               scrape(profile.instagram_username, session_data, opts) do
-          update_profile_metadata(profile, profile_metadata)
-          persisted_count = persist_posts(profile.id, posts)
-          Instagram.update_last_scraped(profile)
-          Instagram.complete_scrape_log(log, %{posts_found: persisted_count})
-        else
-          {:error, reason} = error ->
-            Instagram.fail_scrape_log(log, inspect(reason))
-            error
-        end
+        scrape_and_persist_with_log(profile, connection, log, opts)
 
       {:error, _reason} = error ->
         error
@@ -70,6 +62,26 @@ defmodule Instabot.Scraper.PostsScraper do
   end
 
   # --- Private ---
+
+  defp scrape_and_persist_with_log(profile, connection, log, opts) do
+    with {:ok, session_data} <- Encryption.decrypt_term(connection.encrypted_cookies),
+         {:ok, %{posts: posts, profile_metadata: profile_metadata}} <-
+           scrape(profile.instagram_username, session_data, opts) do
+      update_profile_metadata(profile, profile_metadata)
+      persisted_count = persist_posts(profile, posts)
+      Instagram.update_last_scraped(profile)
+      Instagram.complete_scrape_log(log, %{posts_found: persisted_count})
+    else
+      {:error, reason} = error ->
+        Instagram.fail_scrape_log(log, inspect(reason))
+        error
+    end
+  catch
+    kind, reason ->
+      error_message = Exception.format(kind, reason, __STACKTRACE__)
+      Instagram.fail_scrape_log(log, error_message)
+      {:error, {kind, reason}}
+  end
 
   defp scrape_with_browser(browser, username, session_data, max_posts) do
     with {:ok, _} <- Browser.launch(browser, AntiDetection.launch_options()),
@@ -143,11 +155,18 @@ defmodule Instabot.Scraper.PostsScraper do
     end
   end
 
-  defp persist_posts(tracked_profile_id, posts) do
+  defp persist_posts(profile, posts) do
     Enum.count(posts, fn post_attrs ->
-      case Instagram.create_post(tracked_profile_id, post_attrs) do
-        {:ok, _post} -> true
-        {:error, _changeset} -> false
+      case Instagram.upsert_post_from_scrape(profile.id, post_attrs) do
+        {:ok, post, status} when status in [:inserted, :updated] ->
+          Events.broadcast_post_created(profile, post)
+          true
+
+        {:ok, _post, :unchanged} ->
+          false
+
+        {:error, _changeset} ->
+          false
       end
     end)
   end

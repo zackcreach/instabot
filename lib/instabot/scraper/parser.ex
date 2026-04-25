@@ -459,7 +459,7 @@ defmodule Instabot.Scraper.Parser do
 
   defp story_item?(%{} = item) do
     (is_binary(item["id"]) or is_integer(item["pk"]) or is_binary(item["pk"])) and
-      (is_binary(extract_story_media_url(item)) or not is_nil(item["taken_at"]) or not is_nil(item["taken_at_timestamp"]))
+      is_binary(extract_story_media_url(item))
   end
 
   defp has_video_indicator?(html) do

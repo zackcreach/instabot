@@ -37,5 +37,6 @@ defmodule Instabot.Instagram.Story do
     |> validate_required([:tracked_profile_id, :instagram_story_id])
     |> validate_inclusion(:ocr_status, @ocr_statuses)
     |> validate_inclusion(:story_type, @story_types)
+    |> unique_constraint([:tracked_profile_id, :instagram_story_id])
   end
 end

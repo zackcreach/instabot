@@ -68,6 +68,7 @@ defmodule Instabot.MixProject do
       {:oban, "~> 2.18"},
       {:hammer, "~> 6.2"},
       {:tesseract_ocr, "~> 0.1"},
+      {:tzdata, "~> 1.1"},
       {:styler, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
@@ -80,20 +81,23 @@ defmodule Instabot.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.playwright", "assets.build"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.npm", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.playwright": ["cmd --cd assets/playwright npm install"],
-      "playwright.install": ["cmd --cd assets/playwright npx playwright install chromium"],
+      test: ["assets.npm", "ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      "assets.npm": ["cmd --cd assets npm ci --include=dev", "assets.bridge"],
+      "assets.bridge": ["cmd --cd assets npm run build:bridge"],
+      "assets.test": ["assets.npm", "cmd --cd assets npm run typecheck", "cmd --cd assets npm test"],
+      "playwright.install": ["cmd --cd assets npx playwright install chromium"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind instabot", "esbuild instabot"],
       "assets.deploy": [
+        "assets.npm",
         "tailwind instabot --minify",
         "esbuild instabot --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: ["assets.test", "compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end
 end

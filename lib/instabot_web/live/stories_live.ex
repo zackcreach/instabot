@@ -3,7 +3,9 @@ defmodule InstabotWeb.StoriesLive do
   use InstabotWeb, :live_view
 
   alias Instabot.Instagram
+  alias Instabot.Instagram.Events
   alias Instabot.Instagram.Feed
+  alias InstabotWeb.DateTimeFormatter
 
   @page_size Feed.default_limit()
 
@@ -84,8 +86,8 @@ defmodule InstabotWeb.StoriesLive do
                     <span class="text-xs font-medium truncate">
                       @{story.tracked_profile.instagram_username}
                     </span>
-                    <span class="text-xs opacity-50 ml-auto">
-                      {relative_time(story.posted_at)}
+                    <span class="text-xs opacity-50 ml-auto shrink-0 text-right">
+                      {DateTimeFormatter.relative(story.posted_at)}
                     </span>
                   </div>
                   <p :if={story.ocr_text} class="text-xs line-clamp-3 opacity-70 mt-1">
@@ -155,7 +157,9 @@ defmodule InstabotWeb.StoriesLive do
               </div>
               <div>
                 <div class="font-semibold">@{@selected_story.tracked_profile.instagram_username}</div>
-                <div class="text-xs opacity-50">{relative_time(@selected_story.posted_at)}</div>
+                <div class="text-xs opacity-50">
+                  {DateTimeFormatter.relative(@selected_story.posted_at)}
+                </div>
               </div>
             </div>
             <.link
@@ -338,6 +342,10 @@ defmodule InstabotWeb.StoriesLive do
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
+    if connected?(socket) do
+      Events.subscribe(user_id)
+    end
+
     socket =
       socket
       |> assign(:profiles, Instagram.list_tracked_profiles(user_id))
@@ -384,6 +392,20 @@ defmodule InstabotWeb.StoriesLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_info({:instagram_event, %{type: :story_created}}, socket) do
+    socket =
+      socket
+      |> assign(:profiles, Instagram.list_tracked_profiles(socket.assigns.current_scope.user.id))
+      |> load_stories()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:instagram_event, _event}, socket) do
+    {:noreply, socket}
+  end
+
   defp load_stories(socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -409,7 +431,7 @@ defmodule InstabotWeb.StoriesLive do
   end
 
   defp day_label(%{posted_at: nil}), do: "Unknown"
-  defp day_label(%{posted_at: datetime}), do: Calendar.strftime(datetime, "%B %d, %Y")
+  defp day_label(%{posted_at: datetime}), do: DateTimeFormatter.long_date(datetime)
 
   defp day_sort_key(%{posted_at: nil}), do: 0
   defp day_sort_key(%{posted_at: datetime}), do: -DateTime.to_unix(datetime)
@@ -417,20 +439,5 @@ defmodule InstabotWeb.StoriesLive do
   defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Instabot.Media.to_url(url)
   defp profile_avatar_url(_profile), do: nil
 
-  defp relative_time(nil), do: "just now"
-
-  defp relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 60 -> "just now"
-      diff < 3600 -> "#{div(diff, 60)}m ago"
-      diff < 86_400 -> "#{div(diff, 3600)}h ago"
-      diff < 2_592_000 -> "#{div(diff, 86_400)}d ago"
-      true -> Calendar.strftime(datetime, "%b %d, %Y")
-    end
-  end
-
-  defp format_datetime(nil), do: ""
-  defp format_datetime(datetime), do: Calendar.strftime(datetime, "%b %d, %Y %I:%M %p")
+  defp format_datetime(datetime), do: DateTimeFormatter.datetime(datetime)
 end

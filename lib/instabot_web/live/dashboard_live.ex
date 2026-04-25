@@ -3,7 +3,10 @@ defmodule InstabotWeb.DashboardLive do
   use InstabotWeb, :live_view
 
   alias Instabot.Instagram
+  alias Instabot.Scraping.Events
+  alias Instabot.Scraping.State, as: ScrapingState
   alias Instabot.Workers.ScrapeProfile
+  alias InstabotWeb.DateTimeFormatter
 
   @impl true
   def render(assigns) do
@@ -51,7 +54,7 @@ defmodule InstabotWeb.DashboardLive do
               <span class="text-sm">@{@connection.instagram_username}</span>
             </div>
             <p :if={@connection.last_login_at} class="text-sm opacity-70 mt-2">
-              Last login: {Calendar.strftime(@connection.last_login_at, "%b %d, %Y at %I:%M %p")}
+              Last login: {DateTimeFormatter.long_datetime(@connection.last_login_at)}
             </p>
           <% else %>
             <p class="text-sm opacity-70 mb-4">
@@ -71,9 +74,17 @@ defmodule InstabotWeb.DashboardLive do
               class="flex items-center justify-between py-2 border-b border-base-200 last:border-0"
             >
               <div class="flex items-center gap-3">
-                <div class="avatar placeholder">
+                <div class={[
+                  "avatar",
+                  is_nil(profile_avatar_url(profile)) && "placeholder"
+                ]}>
                   <div class="bg-neutral text-neutral-content w-8 rounded-full">
-                    <span class="text-xs">
+                    <img
+                      :if={profile_avatar_url(profile)}
+                      src={profile_avatar_url(profile)}
+                      alt={profile.instagram_username}
+                    />
+                    <span :if={is_nil(profile_avatar_url(profile))} class="text-xs">
                       {String.first(profile.instagram_username) |> String.upcase()}
                     </span>
                   </div>
@@ -90,14 +101,14 @@ defmodule InstabotWeb.DashboardLive do
                   :if={profile.is_active}
                   phx-click="scrape_now"
                   phx-value-id={profile.id}
-                  disabled={MapSet.member?(@scraping_profile_ids, profile.id)}
+                  disabled={scrape_active?(@scrape_states, profile.id)}
                   class="btn btn-ghost btn-xs"
                 >
                   <.icon
                     name="hero-arrow-path"
                     class={[
                       "size-4",
-                      MapSet.member?(@scraping_profile_ids, profile.id) && "animate-spin"
+                      scrape_active?(@scrape_states, profile.id) && "animate-spin"
                     ]}
                   /> Scrape
                 </button>
@@ -108,7 +119,17 @@ defmodule InstabotWeb.DashboardLive do
                   {if profile.is_active, do: "active", else: "paused"}
                 </div>
                 <span :if={profile.last_scraped_at} class="text-xs opacity-50">
-                  {relative_time(profile.last_scraped_at)}
+                  {DateTimeFormatter.short_relative(profile.last_scraped_at)}
+                </span>
+                <span
+                  :if={scrape_message(@scrape_states, profile.id)}
+                  id={"dashboard-scrape-state-#{profile.id}"}
+                  class={[
+                    "text-xs font-medium",
+                    scrape_state_class(@scrape_states, profile.id)
+                  ]}
+                >
+                  {scrape_message(@scrape_states, profile.id)}
                 </span>
               </div>
             </div>
@@ -137,12 +158,12 @@ defmodule InstabotWeb.DashboardLive do
     user_id = socket.assigns.current_scope.user.id
 
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(Instabot.PubSub, "scrape_updates:#{user_id}")
+      Events.subscribe(user_id)
     end
 
     socket =
       socket
-      |> assign(:scraping_profile_ids, MapSet.new())
+      |> assign(:scrape_states, ScrapingState.list_for_user(user_id))
       |> load_data(user_id)
 
     {:ok, socket}
@@ -158,11 +179,11 @@ defmodule InstabotWeb.DashboardLive do
         {:noreply, put_flash(socket, :info, "Scrape for @#{profile.instagram_username} already queued.")}
 
       {:ok, _job} ->
-        scraping_ids = MapSet.put(socket.assigns.scraping_profile_ids, profile.id)
+        event = Events.broadcast(profile, :queued)
 
         socket =
           socket
-          |> assign(:scraping_profile_ids, scraping_ids)
+          |> assign(:scrape_states, put_scrape_state(socket.assigns.scrape_states, event))
           |> put_flash(:info, "Scrape queued for @#{profile.instagram_username}.")
 
         {:noreply, socket}
@@ -176,20 +197,26 @@ defmodule InstabotWeb.DashboardLive do
     user_id = socket.assigns.current_scope.user.id
     profiles = Instagram.list_tracked_profiles(user_id)
 
-    {queued_count, scraping_ids} =
+    {queued_count, scrape_states} =
       profiles
       |> Enum.filter(& &1.is_active)
-      |> Enum.reduce({0, socket.assigns.scraping_profile_ids}, fn profile, {count, ids} ->
+      |> Enum.reduce({0, socket.assigns.scrape_states}, fn profile, {count, states} ->
         case %{tracked_profile_id: profile.id} |> ScrapeProfile.new() |> Oban.insert() do
-          {:ok, %{conflict?: true}} -> {count, ids}
-          {:ok, _job} -> {count + 1, MapSet.put(ids, profile.id)}
-          {:error, _} -> {count, ids}
+          {:ok, %{conflict?: true}} ->
+            {count, states}
+
+          {:ok, _job} ->
+            event = Events.broadcast(profile, :queued)
+            {count + 1, put_scrape_state(states, event)}
+
+          {:error, _} ->
+            {count, states}
         end
       end)
 
     socket =
       socket
-      |> assign(:scraping_profile_ids, scraping_ids)
+      |> assign(:scrape_states, scrape_states)
       |> put_flash(:info, queued_flash(queued_count))
 
     {:noreply, socket}
@@ -200,13 +227,13 @@ defmodule InstabotWeb.DashboardLive do
   defp queued_flash(count), do: "#{count} scrape jobs queued."
 
   @impl true
-  def handle_info({:scrape_completed, profile_id}, socket) do
+  def handle_info({:scrape_event, event}, socket) do
     user_id = socket.assigns.current_scope.user.id
-    scraping_ids = MapSet.delete(socket.assigns.scraping_profile_ids, profile_id)
+    scrape_states = put_scrape_state(socket.assigns.scrape_states, event)
 
     socket =
       socket
-      |> assign(:scraping_profile_ids, scraping_ids)
+      |> assign(:scrape_states, scrape_states)
       |> load_data(user_id)
 
     {:noreply, socket}
@@ -226,14 +253,32 @@ defmodule InstabotWeb.DashboardLive do
   defp connection_badge_class("expired"), do: "badge-error"
   defp connection_badge_class(_), do: "badge-ghost"
 
-  defp relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
+  defp put_scrape_state(scrape_states, %{profile_id: profile_id} = event) do
+    Map.put(scrape_states, profile_id, event)
+  end
 
-    cond do
-      diff < 60 -> "just now"
-      diff < 3600 -> "#{div(diff, 60)}m ago"
-      diff < 86_400 -> "#{div(diff, 3600)}h ago"
-      true -> "#{div(diff, 86_400)}d ago"
+  defp scrape_active?(scrape_states, profile_id) do
+    scrape_states
+    |> Map.get(profile_id, %{})
+    |> Map.get(:status)
+    |> Events.active?()
+  end
+
+  defp scrape_message(scrape_states, profile_id) do
+    scrape_states
+    |> Map.get(profile_id, %{})
+    |> Map.get(:message)
+  end
+
+  defp scrape_state_class(scrape_states, profile_id) do
+    case scrape_states |> Map.get(profile_id, %{}) |> Map.get(:status) do
+      :failed -> "text-error"
+      :cancelled -> "text-warning"
+      :completed -> "text-success"
+      _status -> "text-info"
     end
   end
+
+  defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Instabot.Media.to_url(url)
+  defp profile_avatar_url(_profile), do: nil
 end

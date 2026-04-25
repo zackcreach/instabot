@@ -21,8 +21,14 @@
         if (!document.documentElement.hasAttribute("data-theme")) {
           setTheme(localStorage.getItem("phx:theme") || "system");
         }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+        window.addEventListener("storage", (event) => event.key === "phx:theme" && setTheme(event.newValue || "system"));
+        window.addEventListener("click", (event) => {
+          const button = event.target.closest("[data-theme-choice]");
+
+          if (button) {
+            setTheme(button.dataset.themeChoice);
+          }
+        });
       })();
     </script>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
@@ -54,17 +60,9 @@
                 Notifications
               </.link>
             </li>
-            <li class="hidden md:block text-xs opacity-70">
-              {@current_scope.user.email}
-            </li>
             <li>
               <.link href={~p"/users/settings"} class="btn btn-ghost btn-sm">
                 <.icon name="hero-cog-6-tooth" class="size-4" />
-              </.link>
-            </li>
-            <li>
-              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm">
-                Log out
               </.link>
             </li>
           <% else %>
@@ -79,9 +77,6 @@
               </.link>
             </li>
           <% end %>
-          <li>
-            <Layouts.theme_toggle />
-          </li>
         </ul>
       </div>
     </header>

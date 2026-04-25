@@ -6,7 +6,7 @@ defmodule Instabot.Scraper.LoginOrchestratorTest do
   alias Instabot.Instagram
   alias Instabot.Scraper.LoginOrchestrator
 
-  @login_mock_bridge_path Path.expand("../../../test/support/login_mock_bridge.js", __DIR__)
+  @login_mock_bridge_path Path.expand("../../../test/support/dist/login_mock_bridge.js", __DIR__)
 
   defp configure_mock_bridge(mode) do
     original_config = Application.get_env(:instabot, Instabot.Scraper)

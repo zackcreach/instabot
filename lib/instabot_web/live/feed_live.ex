@@ -3,8 +3,19 @@ defmodule InstabotWeb.FeedLive do
   use InstabotWeb, :live_view
 
   alias Instabot.Instagram
+  alias Instabot.Instagram.Events
   alias Instabot.Instagram.Feed
+  alias InstabotWeb.DateTimeFormatter
 
+  @html_entities [
+    {"&amp;", "&"},
+    {"&quot;", "\""},
+    {"&#39;", "'"},
+    {"&apos;", "'"},
+    {"&lt;", "<"},
+    {"&gt;", ">"},
+    {"&nbsp;", " "}
+  ]
   @page_size Feed.default_limit()
 
   @impl true
@@ -73,7 +84,7 @@ defmodule InstabotWeb.FeedLive do
               <img
                 :if={thumbnail_for(post)}
                 src={thumbnail_for(post)}
-                alt={post.caption || "Instagram post"}
+                alt={display_caption(post.caption) || "Instagram post"}
                 class="w-full h-full object-cover"
               />
               <div :if={!thumbnail_for(post)} class="flex items-center justify-center w-full h-full">
@@ -100,11 +111,13 @@ defmodule InstabotWeb.FeedLive do
                 <span class="text-sm font-medium truncate">
                   @{post.tracked_profile.instagram_username}
                 </span>
-                <span class="text-xs opacity-50 ml-auto">
-                  {relative_time(post_display_datetime(post))}
+                <span class="text-xs opacity-50 ml-auto shrink-0 text-right">
+                  {DateTimeFormatter.relative(post_display_datetime(post))}
                 </span>
               </div>
-              <p :if={post.caption} class="text-sm line-clamp-3 mt-1">{post.caption}</p>
+              <p :if={display_caption(post.caption)} class="text-sm line-clamp-3 mt-1">
+                {display_caption(post.caption)}
+              </p>
             </div>
           </.link>
         </div>
@@ -168,7 +181,7 @@ defmodule InstabotWeb.FeedLive do
               <div>
                 <div class="font-semibold">@{@selected_post.tracked_profile.instagram_username}</div>
                 <div class="text-xs opacity-50">
-                  {relative_time(post_display_datetime(@selected_post))}
+                  {DateTimeFormatter.relative(post_display_datetime(@selected_post))}
                 </div>
               </div>
             </div>
@@ -185,7 +198,7 @@ defmodule InstabotWeb.FeedLive do
             <img
               :if={current_image(@selected_post, @selected_image_index)}
               src={current_image(@selected_post, @selected_image_index)}
-              alt={@selected_post.caption || "Instagram post"}
+              alt={display_caption(@selected_post.caption) || "Instagram post"}
               class="w-full h-full object-contain pointer-events-none"
             />
             <div
@@ -217,8 +230,8 @@ defmodule InstabotWeb.FeedLive do
             </div>
           </div>
 
-          <p :if={@selected_post.caption} class="text-sm whitespace-pre-wrap mb-3">
-            {@selected_post.caption}
+          <p :if={display_caption(@selected_post.caption)} class="text-sm whitespace-pre-wrap mb-3">
+            {display_caption(@selected_post.caption)}
           </p>
 
           <div :if={@selected_post.hashtags != []} class="flex flex-wrap gap-1 mb-3">
@@ -389,6 +402,10 @@ defmodule InstabotWeb.FeedLive do
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
+    if connected?(socket) do
+      Events.subscribe(user_id)
+    end
+
     socket =
       socket
       |> assign(:profiles, Instagram.list_tracked_profiles(user_id))
@@ -462,6 +479,20 @@ defmodule InstabotWeb.FeedLive do
     {:noreply, update(socket, :selected_image_index, fn index -> min(index + 1, max_index) end)}
   end
 
+  @impl true
+  def handle_info({:instagram_event, %{type: :post_created}}, socket) do
+    socket =
+      socket
+      |> assign(:profiles, Instagram.list_tracked_profiles(socket.assigns.current_scope.user.id))
+      |> load_posts()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:instagram_event, _event}, socket) do
+    {:noreply, socket}
+  end
+
   defp load_posts(socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -501,43 +532,46 @@ defmodule InstabotWeb.FeedLive do
   defp profile_avatar_url(_profile), do: nil
 
   defp post_display_datetime(%{posted_at: %DateTime{} = posted_at}), do: posted_at
-  defp post_display_datetime(%{caption: caption, inserted_at: inserted_at}), do: caption_datetime(caption) || inserted_at
   defp post_display_datetime(%{inserted_at: inserted_at}), do: inserted_at
 
-  defp caption_datetime(caption) when is_binary(caption) do
-    case Regex.run(~r/\bon\s+([A-Z][a-z]+)\s+(\d{1,2}),\s+(\d{4})\s*:/, caption) do
-      [_, month_name, day, year] -> date_datetime(month_name, day, year)
-      _ -> nil
+  defp display_caption(nil), do: nil
+
+  defp display_caption(caption) when is_binary(caption) do
+    caption
+    |> decode_html_entities()
+    |> trim_caption_prefix()
+    |> String.trim()
+  end
+
+  defp trim_caption_prefix(caption) do
+    cond do
+      String.contains?(caption, "&quot;") ->
+        caption
+        |> String.split("&quot;", parts: 2)
+        |> List.last()
+        |> trim_caption_suffix()
+
+      String.contains?(caption, "\"") ->
+        caption
+        |> String.split("\"", parts: 2)
+        |> List.last()
+        |> trim_caption_suffix()
+
+      true ->
+        caption
     end
   end
 
-  defp caption_datetime(_caption), do: nil
+  defp trim_caption_suffix(caption) do
+    caption
+    |> String.trim()
+    |> String.replace(~r/"\.?$/u, "")
+  end
 
-  defp date_datetime(month_name, day, year) do
-    months = %{
-      "January" => 1,
-      "February" => 2,
-      "March" => 3,
-      "April" => 4,
-      "May" => 5,
-      "June" => 6,
-      "July" => 7,
-      "August" => 8,
-      "September" => 9,
-      "October" => 10,
-      "November" => 11,
-      "December" => 12
-    }
-
-    with month when is_integer(month) <- months[month_name],
-         {day_number, ""} <- Integer.parse(day),
-         {year_number, ""} <- Integer.parse(year),
-         {:ok, date} <- Date.new(year_number, month, day_number),
-         {:ok, datetime} <- DateTime.new(date, ~T[12:00:00], "Etc/UTC") do
-      datetime
-    else
-      _ -> nil
-    end
+  defp decode_html_entities(text) do
+    Enum.reduce(@html_entities, text, fn {entity, char}, acc ->
+      String.replace(acc, entity, char)
+    end)
   end
 
   defp empty_title("", ""), do: "No posts yet"
@@ -550,18 +584,5 @@ defmodule InstabotWeb.FeedLive do
 
   defp empty_subtitle(_search, _profile_id, _profiles), do: "Try clearing the filter or search term."
 
-  defp relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 60 -> "just now"
-      diff < 3600 -> "#{div(diff, 60)}m ago"
-      diff < 86_400 -> "#{div(diff, 3600)}h ago"
-      diff < 2_592_000 -> "#{div(diff, 86_400)}d ago"
-      true -> Calendar.strftime(datetime, "%b %d, %Y")
-    end
-  end
-
-  defp format_datetime(nil), do: ""
-  defp format_datetime(datetime), do: Calendar.strftime(datetime, "%B %d, %Y at %I:%M %p")
+  defp format_datetime(datetime), do: DateTimeFormatter.long_datetime(datetime)
 end

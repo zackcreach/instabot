@@ -5,6 +5,7 @@ defmodule InstabotWeb.DashboardLiveTest do
   import Instabot.InstagramFixtures
   import Phoenix.LiveViewTest
 
+  alias Instabot.Scraping.Events
   alias Instabot.Workers.ScrapeProfile
 
   setup :register_and_log_in_user
@@ -15,6 +16,19 @@ defmodule InstabotWeb.DashboardLiveTest do
   end
 
   describe "scrape_now event" do
+    test "renders profile avatar images when available", %{conn: conn, user: user} do
+      _profile =
+        tracked_profile_fixture(user, %{
+          instagram_username: "avatarprofile",
+          profile_pic_url: "https://cdn.instagram.com/avatar.jpg"
+        })
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ "https://cdn.instagram.com/avatar.jpg"
+      assert html =~ "avatarprofile"
+    end
+
     test "enqueues a scrape job for the profile", %{conn: conn, profile: profile} do
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -24,6 +38,7 @@ defmodule InstabotWeb.DashboardLiveTest do
 
       assert_enqueued(worker: ScrapeProfile, args: %{tracked_profile_id: profile.id})
       assert render(view) =~ "Scrape queued for @natgeo"
+      assert render(view) =~ "Queued"
     end
   end
 
@@ -71,18 +86,24 @@ defmodule InstabotWeb.DashboardLiveTest do
     end
   end
 
-  describe "PubSub scrape_completed" do
-    test "refreshes data when scrape completes", %{conn: conn, user: user, profile: profile} do
+  describe "PubSub scrape_event" do
+    test "refreshes data when scrape completes", %{conn: conn, profile: profile} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      Phoenix.PubSub.broadcast(
-        Instabot.PubSub,
-        "scrape_updates:#{user.id}",
-        {:scrape_completed, profile.id}
-      )
+      Events.broadcast(profile, :completed)
 
       html = render(view)
       assert html =~ "natgeo"
+      assert html =~ "Scrape complete"
+    end
+
+    test "renders failed scrape state", %{conn: conn, profile: profile} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      Events.broadcast(profile, :failed, %{message: "Scrape failed"})
+
+      html = render(view)
+      assert html =~ "Scrape failed"
     end
   end
 end

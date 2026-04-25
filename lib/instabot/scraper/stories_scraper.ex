@@ -6,6 +6,7 @@ defmodule Instabot.Scraper.StoriesScraper do
 
   alias Instabot.Encryption
   alias Instabot.Instagram
+  alias Instabot.Instagram.Events
   alias Instabot.Instagram.InstagramConnection
   alias Instabot.Instagram.TrackedProfile
   alias Instabot.Scraper.AntiDetection
@@ -20,6 +21,33 @@ defmodule Instabot.Scraper.StoriesScraper do
   @frame_delay_min 1_000
   @frame_delay_max 3_000
   @max_frames 30
+
+  @dismiss_story_gate_js """
+  (() => {
+    const elements = Array.from(document.querySelectorAll("button, div[role='button']"));
+    const button = elements.find(element => /view story/i.test(element.innerText || element.textContent || ""));
+    if (!button) return false;
+    button.click();
+    return true;
+  })()
+  """
+
+  @story_viewer_state_js """
+  (() => {
+    const text = document.body ? document.body.innerText || "" : "";
+    const hasViewStoryGate = /view story/i.test(text) && /will be able to see that you viewed/i.test(text);
+    const hasStoryPath = window.location.pathname.startsWith("/stories/");
+    const hasVisibleMedia = Array.from(document.querySelectorAll("video, img")).some(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.width >= 200 && rect.height >= 200 && rect.top < window.innerHeight && rect.bottom > 0;
+    });
+    const hasViewerControls = Boolean(
+      document.querySelector("button[aria-label='Next'], button[aria-label='Pause'], svg[aria-label='Pause'], svg[aria-label='Play']")
+    );
+
+    return { hasStoryPath, hasViewStoryGate, hasVisibleMedia, hasViewerControls };
+  })()
+  """
 
   @story_data_js """
   (() => {
@@ -54,9 +82,11 @@ defmodule Instabot.Scraper.StoriesScraper do
     max_frames = Keyword.get(opts, :max_frames, @max_frames)
 
     with {:ok, browser} <- ScraperSupervisor.start_browser() do
-      result = scrape_with_browser(browser, username, session_data, max_frames)
-      Browser.stop(browser)
-      result
+      try do
+        scrape_with_browser(browser, username, session_data, max_frames)
+      after
+        Browser.stop(browser)
+      end
     end
   end
 
@@ -70,16 +100,7 @@ defmodule Instabot.Scraper.StoriesScraper do
   def scrape_and_persist(%TrackedProfile{} = profile, %InstagramConnection{} = connection, opts \\ []) do
     case Instagram.create_scrape_log(profile.id, %{scrape_type: "stories"}) do
       {:ok, log} ->
-        with {:ok, session_data} <- Encryption.decrypt_term(connection.encrypted_cookies),
-             {:ok, stories} <- scrape(profile.instagram_username, session_data, opts) do
-          persisted_count = persist_stories(profile, stories)
-          Instagram.update_last_scraped(profile)
-          Instagram.complete_scrape_log(log, %{stories_found: persisted_count})
-        else
-          {:error, reason} = error ->
-            Instagram.fail_scrape_log(log, inspect(reason))
-            error
-        end
+        scrape_and_persist_with_log(profile, connection, log, opts)
 
       {:error, _reason} = error ->
         error
@@ -88,10 +109,29 @@ defmodule Instabot.Scraper.StoriesScraper do
 
   # --- Private ---
 
+  defp scrape_and_persist_with_log(profile, connection, log, opts) do
+    with {:ok, session_data} <- Encryption.decrypt_term(connection.encrypted_cookies),
+         {:ok, stories} <- scrape(profile.instagram_username, session_data, opts) do
+      persisted_count = persist_stories(profile, stories)
+      Instagram.update_last_scraped(profile)
+      Instagram.complete_scrape_log(log, %{stories_found: persisted_count})
+    else
+      {:error, reason} = error ->
+        Instagram.fail_scrape_log(log, inspect(reason))
+        error
+    end
+  catch
+    kind, reason ->
+      error_message = Exception.format(kind, reason, __STACKTRACE__)
+      Instagram.fail_scrape_log(log, error_message)
+      {:error, {kind, reason}}
+  end
+
   defp scrape_with_browser(browser, username, session_data, max_frames) do
     with {:ok, _} <- Browser.launch(browser, AntiDetection.launch_options()),
          {:ok, page_id} <- Session.setup_session_from_data(browser, session_data),
-         :ok <- navigate_to_stories(browser, page_id, username) do
+         :ok <- navigate_to_stories(browser, page_id, username),
+         :ok <- dismiss_story_gate(browser, page_id) do
       collect_story_frames(browser, page_id, max_frames)
     end
   end
@@ -130,37 +170,63 @@ defmodule Instabot.Scraper.StoriesScraper do
     metadata
     |> Enum.take(max_frames)
     |> Enum.with_index()
-    |> Enum.reduce([], fn {story_meta, index}, acc ->
+    |> Enum.reduce_while([], fn {story_meta, index}, acc ->
       AntiDetection.wait(@frame_delay_min, @frame_delay_max)
 
-      screenshot_result =
-        if index > 0 do
-          advance_and_screenshot(browser, page_id)
-        else
-          Browser.screenshot(browser, page_id)
-        end
+      with :ok <- maybe_advance_story(browser, page_id, index),
+           :ok <- dismiss_story_gate(browser, page_id),
+           true <- story_viewer_ready?(browser, page_id),
+           {:ok, %{"base64" => base64}} <- Browser.screenshot(browser, page_id) do
+        story = Map.put(story_meta, :screenshot_base64, base64)
+        {:cont, [story | acc]}
+      else
+        :done ->
+          {:halt, acc}
 
-      case screenshot_result do
-        {:ok, %{"base64" => base64}} ->
-          story = Map.put(story_meta, :screenshot_base64, base64)
-          [story | acc]
+        false ->
+          Logger.warning("Skipping story frame #{index}: story viewer was not visible")
+          {:halt, acc}
 
         {:error, reason} ->
           Logger.warning("Failed to capture story frame #{index}: #{inspect(reason)}")
-          acc
+          {:cont, acc}
       end
     end)
     |> Enum.reverse()
   end
 
-  defp advance_and_screenshot(browser, page_id) do
+  defp maybe_advance_story(_browser, _page_id, 0), do: :ok
+
+  defp maybe_advance_story(browser, page_id, _index) do
     case Browser.click(browser, page_id, "button[aria-label='Next']") do
       {:ok, _} ->
         AntiDetection.wait(500, 1_000)
-        Browser.screenshot(browser, page_id)
+        :ok
 
       {:error, _} ->
-        Browser.screenshot(browser, page_id)
+        :done
+    end
+  end
+
+  defp dismiss_story_gate(browser, page_id) do
+    case Browser.evaluate(browser, page_id, @dismiss_story_gate_js) do
+      {:ok, true} ->
+        AntiDetection.wait(1_000, 2_000)
+        :ok
+
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp story_viewer_ready?(browser, page_id) do
+    case Browser.evaluate(browser, page_id, @story_viewer_state_js) do
+      {:ok, %{"hasStoryPath" => true, "hasViewStoryGate" => false, "hasVisibleMedia" => true}} -> true
+      {:ok, %{"hasStoryPath" => true, "hasViewStoryGate" => false, "hasViewerControls" => true}} -> true
+      _ -> false
     end
   end
 
@@ -181,8 +247,12 @@ defmodule Instabot.Scraper.StoriesScraper do
       }
 
       case Instagram.create_story(profile.id, story_attrs) do
-        {:ok, _story} -> true
-        {:error, _changeset} -> false
+        {:ok, story} ->
+          Events.broadcast_story_created(profile, story)
+          true
+
+        {:error, _changeset} ->
+          false
       end
     end)
   end

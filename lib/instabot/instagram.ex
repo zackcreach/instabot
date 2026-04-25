@@ -119,7 +119,21 @@ defmodule Instabot.Instagram do
   def create_post(tracked_profile_id, attrs) do
     %Post{tracked_profile_id: tracked_profile_id}
     |> Post.changeset(attrs)
-    |> Repo.insert(on_conflict: :nothing)
+    |> Repo.insert()
+  end
+
+  def upsert_post_from_scrape(tracked_profile_id, attrs) do
+    case get_post_by_instagram_id(tracked_profile_id, attrs[:instagram_post_id] || attrs["instagram_post_id"]) do
+      nil ->
+        tracked_profile_id
+        |> create_post(attrs)
+        |> tag_post_result(:inserted)
+
+      %Post{} = post ->
+        post
+        |> Post.changeset(scrape_update_attrs(post, attrs))
+        |> update_scraped_post()
+    end
   end
 
   def count_posts(user_id) do
@@ -213,4 +227,47 @@ defmodule Instabot.Instagram do
     })
     |> Repo.update()
   end
+
+  defp get_post_by_instagram_id(_tracked_profile_id, instagram_post_id) when instagram_post_id in [nil, ""], do: nil
+
+  defp get_post_by_instagram_id(tracked_profile_id, instagram_post_id) do
+    Repo.get_by(Post, tracked_profile_id: tracked_profile_id, instagram_post_id: instagram_post_id)
+  end
+
+  defp scrape_update_attrs(post, attrs) do
+    attrs
+    |> normalize_attrs()
+    |> Enum.reject(fn {key, value} ->
+      blank_scrape_value?(key, value) and not blank_existing_value?(Map.get(post, key))
+    end)
+    |> Map.new()
+  end
+
+  defp normalize_attrs(attrs) do
+    Enum.reduce(attrs, %{}, fn {key, value}, acc ->
+      Map.put(acc, normalize_key(key), value)
+    end)
+  end
+
+  defp normalize_key(key) when is_binary(key), do: String.to_existing_atom(key)
+  defp normalize_key(key), do: key
+
+  defp blank_scrape_value?(key, value) when key in [:caption, :permalink], do: is_nil(value) or String.trim(value) == ""
+
+  defp blank_scrape_value?(key, value) when key in [:hashtags, :media_urls], do: value in [nil, []]
+  defp blank_scrape_value?(_key, value), do: is_nil(value)
+
+  defp blank_existing_value?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_existing_value?(value), do: value in [nil, []]
+
+  defp update_scraped_post(%Ecto.Changeset{changes: changes, data: post}) when changes == %{}, do: {:ok, post, :unchanged}
+
+  defp update_scraped_post(changeset) do
+    changeset
+    |> Repo.update()
+    |> tag_post_result(:updated)
+  end
+
+  defp tag_post_result({:ok, post}, status), do: {:ok, post, status}
+  defp tag_post_result({:error, changeset}, _status), do: {:error, changeset}
 end

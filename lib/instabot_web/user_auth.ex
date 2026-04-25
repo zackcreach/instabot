@@ -8,9 +8,9 @@ defmodule InstabotWeb.UserAuth do
   alias Instabot.Accounts
   alias Instabot.Accounts.Scope
 
-  # Make the remember me cookie valid for 14 days. This should match
+  # Make the remember me cookie valid for 400 days. This should match
   # the session validity setting in UserToken.
-  @max_cookie_age_in_days 14
+  @max_cookie_age_in_days 400
   @remember_me_cookie "_instabot_web_user_remember_me"
   @remember_me_options [
     sign: true,

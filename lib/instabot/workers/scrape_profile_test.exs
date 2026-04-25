@@ -1,10 +1,13 @@
 defmodule Instabot.Workers.ScrapeProfileTest do
-  use Instabot.DataCase, async: true
+  use Instabot.DataCase, async: false
 
+  import Ecto.Query
   import Instabot.AccountsFixtures
   import Instabot.InstagramFixtures
 
   alias Instabot.Instagram
+  alias Instabot.Instagram.ScrapeLog
+  alias Instabot.Repo
   alias Instabot.Workers.ScrapeProfile
 
   setup do
@@ -25,7 +28,9 @@ defmodule Instabot.Workers.ScrapeProfileTest do
                  args: %{"tracked_profile_id" => inactive_profile.id}
                })
 
-      assert_receive {:scrape_completed, received_id}
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :started}}
+      assert inactive_profile.id == received_id
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :cancelled}}
       assert inactive_profile.id == received_id
     end
 
@@ -37,7 +42,9 @@ defmodule Instabot.Workers.ScrapeProfileTest do
                  args: %{"tracked_profile_id" => profile.id}
                })
 
-      assert_receive {:scrape_completed, received_id}
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :started}}
+      assert profile.id == received_id
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :cancelled}}
       assert profile.id == received_id
     end
 
@@ -51,21 +58,56 @@ defmodule Instabot.Workers.ScrapeProfileTest do
                  args: %{"tracked_profile_id" => profile.id}
                })
 
-      assert_receive {:scrape_completed, received_id}
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :started}}
+      assert profile.id == received_id
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :cancelled}}
       assert profile.id == received_id
     end
 
-    test "broadcasts scrape_completed on success", %{user: user, profile: profile} do
+    test "broadcasts failure when browser startup fails", %{user: user, profile: profile} do
       _connection = connected_connection_fixture(user)
+      scraper_config = Application.get_env(:instabot, Instabot.Scraper, [])
+      mock_bridge_path = Path.expand("../../../test/support/dist/mock_bridge.js", __DIR__)
+
+      Application.put_env(
+        :instabot,
+        Instabot.Scraper,
+        scraper_config
+        |> Keyword.put(:playwright_path, Path.dirname(mock_bridge_path))
+        |> Keyword.put(:bridge_script, mock_bridge_path)
+      )
+
+      System.put_env("INSTABOT_MOCK_BRIDGE_FAIL_LAUNCH", "true")
+
+      on_exit(fn ->
+        Application.put_env(:instabot, Instabot.Scraper, scraper_config)
+        System.delete_env("INSTABOT_MOCK_BRIDGE_FAIL_LAUNCH")
+      end)
 
       Phoenix.PubSub.subscribe(Instabot.PubSub, "scrape_updates:#{user.id}")
 
-      ScrapeProfile.perform(%Oban.Job{
-        args: %{"tracked_profile_id" => profile.id}
-      })
+      assert {:error, _reason} =
+               ScrapeProfile.perform(%Oban.Job{
+                 args: %{"tracked_profile_id" => profile.id}
+               })
 
-      assert_receive {:scrape_completed, received_id}
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :started}}
       assert profile.id == received_id
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :scraping_posts}}
+      assert profile.id == received_id
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :scraping_stories}}
+      assert profile.id == received_id
+      assert_receive {:scrape_event, %{profile_id: received_id, status: :failed}}
+      assert profile.id == received_id
+
+      statuses =
+        Repo.all(
+          from log in ScrapeLog,
+            where: log.tracked_profile_id == ^profile.id,
+            select: log.status
+        )
+
+      assert ["failed", "failed"] == Enum.sort(statuses)
     end
   end
 

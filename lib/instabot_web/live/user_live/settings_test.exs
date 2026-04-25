@@ -15,6 +15,10 @@ defmodule InstabotWeb.UserLive.SettingsTest do
 
       assert html =~ "Change email"
       assert html =~ "Change password"
+      assert html =~ "Account"
+      assert html =~ "Log out"
+      assert html =~ "Appearance"
+      assert html =~ "theme-settings"
     end
 
     test "redirects if user is not logged in", %{conn: conn} do
@@ -25,16 +29,16 @@ defmodule InstabotWeb.UserLive.SettingsTest do
       assert %{"error" => "You must log in to access this page."} = flash
     end
 
-    test "redirects if user is not in sudo mode", %{conn: conn} do
-      {:ok, conn} =
-        conn
-        |> log_in_user(user_fixture(),
-          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
-        )
-        |> live(~p"/users/settings")
-        |> follow_redirect(conn, ~p"/users/log-in")
+    test "renders if user is not in sudo mode", %{conn: conn} do
+      twenty_one_minutes_ago = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+      user = %{user_fixture() | authenticated_at: twenty_one_minutes_ago}
 
-      assert conn.resp_body =~ "You must re-authenticate to access this page."
+      {:ok, _lv, html} =
+        conn
+        |> log_in_user(user)
+        |> live(~p"/users/settings")
+
+      assert html =~ "Account Settings"
     end
   end
 
@@ -87,6 +91,24 @@ defmodule InstabotWeb.UserLive.SettingsTest do
 
       assert result =~ "Change email"
       assert result =~ "did not change"
+    end
+
+    test "requires fresh authentication before submitting", %{conn: conn} do
+      twenty_one_minutes_ago = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+      user = %{user_fixture() | authenticated_at: twenty_one_minutes_ago}
+      stale_conn = log_in_user(conn, user)
+
+      {:ok, lv, _html} = live(stale_conn, ~p"/users/settings")
+
+      assert {:error, {:redirect, %{to: path, flash: flash}}} =
+               lv
+               |> form("#email_form", %{
+                 "user" => %{"email" => unique_user_email()}
+               })
+               |> render_submit()
+
+      assert ~p"/users/log-in" == path
+      assert is_binary(flash)
     end
   end
 
@@ -158,6 +180,27 @@ defmodule InstabotWeb.UserLive.SettingsTest do
       assert result =~ "Change password"
       assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
+    end
+
+    test "requires fresh authentication before submitting", %{conn: conn} do
+      twenty_one_minutes_ago = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+      user = %{user_fixture() | authenticated_at: twenty_one_minutes_ago}
+      stale_conn = log_in_user(conn, user)
+
+      {:ok, lv, _html} = live(stale_conn, ~p"/users/settings")
+
+      assert {:error, {:redirect, %{to: path, flash: flash}}} =
+               lv
+               |> form("#password_form", %{
+                 "user" => %{
+                   "password" => valid_user_password(),
+                   "password_confirmation" => valid_user_password()
+                 }
+               })
+               |> render_submit()
+
+      assert ~p"/users/log-in" == path
+      assert is_binary(flash)
     end
   end
 

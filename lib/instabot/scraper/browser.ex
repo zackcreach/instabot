@@ -163,6 +163,8 @@ defmodule Instabot.Scraper.Browser do
   @spec stop(pid()) :: :ok
   def stop(pid) do
     GenServer.stop(pid, :normal)
+  catch
+    :exit, _reason -> :ok
   end
 
   # --- Server Callbacks ---

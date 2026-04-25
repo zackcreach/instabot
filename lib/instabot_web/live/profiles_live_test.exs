@@ -2,9 +2,13 @@ defmodule InstabotWeb.ProfilesLiveTest do
   use InstabotWeb.ConnCase, async: true
   use Oban.Testing, repo: Instabot.Repo
 
+  import Ecto.Query
   import Instabot.InstagramFixtures
   import Phoenix.LiveViewTest
 
+  alias Instabot.Instagram.TrackedProfile
+  alias Instabot.Repo
+  alias Instabot.Scraping.Events
   alias Instabot.Workers.ScrapeProfile
 
   setup :register_and_log_in_user
@@ -12,6 +16,22 @@ defmodule InstabotWeb.ProfilesLiveTest do
   setup %{user: user} do
     profile = tracked_profile_fixture(user, %{instagram_username: "natgeo"})
     %{profile: profile}
+  end
+
+  describe "mount" do
+    test "renders last scraped timestamps in Eastern time", %{conn: conn, profile: profile} do
+      last_scraped_at = ~U[2026-04-25 02:01:00Z]
+
+      {1, nil} =
+        Repo.update_all(
+          from(p in TrackedProfile, where: p.id == ^profile.id),
+          set: [last_scraped_at: last_scraped_at]
+        )
+
+      {:ok, _view, html} = live(conn, ~p"/profiles")
+
+      assert html =~ "Apr 24, 2026 10:01 PM"
+    end
   end
 
   describe "scrape_now event" do
@@ -24,21 +44,57 @@ defmodule InstabotWeb.ProfilesLiveTest do
 
       assert_enqueued(worker: ScrapeProfile, args: %{tracked_profile_id: profile.id})
       assert render(view) =~ "Scrape queued for @natgeo"
+      assert render(view) =~ "Queued"
+    end
+
+    test "persists queued scrape state after refresh", %{conn: conn, profile: profile} do
+      {:ok, view, _html} = live(conn, ~p"/profiles")
+
+      view
+      |> element("button[phx-click=scrape_now][phx-value-id=#{profile.id}]")
+      |> render_click()
+
+      {:ok, view, _html} = live(conn, ~p"/profiles")
+
+      assert has_element?(view, "#profile-scrape-state-#{profile.id}", "Queued")
+    end
+
+    test "persists completed scrape state after refresh", %{conn: conn, profile: profile} do
+      {:ok, job} =
+        %{tracked_profile_id: profile.id}
+        |> ScrapeProfile.new()
+        |> Oban.insert()
+
+      {1, nil} =
+        Repo.update_all(
+          from(job in Oban.Job, where: job.id == ^job.id),
+          set: [state: "completed"]
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/profiles")
+
+      assert has_element?(view, "#profile-scrape-state-#{profile.id}", "Scrape complete")
     end
   end
 
-  describe "PubSub scrape_completed" do
-    test "refreshes profiles when scrape completes", %{conn: conn, user: user, profile: profile} do
+  describe "PubSub scrape_event" do
+    test "refreshes profiles when scrape completes", %{conn: conn, profile: profile} do
       {:ok, view, _html} = live(conn, ~p"/profiles")
 
-      Phoenix.PubSub.broadcast(
-        Instabot.PubSub,
-        "scrape_updates:#{user.id}",
-        {:scrape_completed, profile.id}
-      )
+      Events.broadcast(profile, :completed)
 
       html = render(view)
       assert html =~ "natgeo"
+      assert html =~ "Scrape complete"
+    end
+
+    test "renders failed scrape state", %{conn: conn, profile: profile} do
+      {:ok, view, _html} = live(conn, ~p"/profiles")
+
+      Events.broadcast(profile, :failed, %{message: "Scrape failed"})
+
+      html = render(view)
+      assert html =~ "Scrape failed"
     end
   end
 end

@@ -1,0 +1,20 @@
+{
+  "name": "instabot-assets",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:bridge": "tsc --project tsconfig.playwright.json && tsc --project tsconfig.test-support.json",
+    "test": "vitest run --coverage.enabled false",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@vitest/coverage-v8": "^3.1.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

@@ -13,6 +13,7 @@ defmodule Instabot.Workers.ScrapeProfile do
   alias Instabot.Notifications
   alias Instabot.Scraper.PostsScraper
   alias Instabot.Scraper.StoriesScraper
+  alias Instabot.Scraping.Events
   alias Instabot.Workers.DownloadImage
   alias Instabot.Workers.ProcessOCR
   alias Instabot.Workers.SendImmediateNotification
@@ -22,19 +23,36 @@ defmodule Instabot.Workers.ScrapeProfile do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"tracked_profile_id" => tracked_profile_id}}) do
     profile = Instagram.get_tracked_profile!(tracked_profile_id)
-    result = do_scrape(profile)
-    broadcast_completion(profile)
-    result
+
+    try do
+      Events.broadcast(profile, :started)
+      result = do_scrape(profile)
+      broadcast_result(profile, result)
+      result
+    catch
+      kind, reason ->
+        error = Exception.format(kind, reason, __STACKTRACE__)
+        Events.broadcast(profile, :failed, %{error: error, message: "Scrape failed"})
+        {:error, {kind, reason}}
+    end
   end
 
   defp do_scrape(profile) do
     with :ok <- verify_active(profile),
          {:ok, connection} <- get_connection(profile.user_id) do
-      scrape_posts(profile, connection)
-      scrape_stories(profile, connection)
-      enqueue_downstream_jobs(profile)
-      maybe_enqueue_immediate_notification(profile.user_id)
-      :ok
+      posts_result = scrape_posts(profile, connection)
+      stories_result = scrape_stories(profile, connection)
+
+      case scrape_result([posts_result, stories_result]) do
+        :ok ->
+          Events.broadcast(profile, :downstream)
+          enqueue_downstream_jobs(profile)
+          maybe_enqueue_immediate_notification(profile.user_id)
+          :ok
+
+        {:error, _reason} = error ->
+          error
+      end
     end
   end
 
@@ -50,22 +68,38 @@ defmodule Instabot.Workers.ScrapeProfile do
   end
 
   defp scrape_posts(profile, connection) do
+    Events.broadcast(profile, :scraping_posts)
+
     case PostsScraper.scrape_and_persist(profile, connection) do
       {:ok, log} ->
         Logger.info("Scraped #{log.posts_found} posts for @#{profile.instagram_username}")
+        {:ok, log}
 
       {:error, reason} ->
         Logger.warning("Post scrape failed for @#{profile.instagram_username}: #{inspect(reason)}")
+        {:error, {:posts, reason}}
     end
   end
 
   defp scrape_stories(profile, connection) do
+    Events.broadcast(profile, :scraping_stories)
+
     case StoriesScraper.scrape_and_persist(profile, connection) do
       {:ok, log} ->
         Logger.info("Scraped #{log.stories_found} stories for @#{profile.instagram_username}")
+        {:ok, log}
 
       {:error, reason} ->
         Logger.warning("Story scrape failed for @#{profile.instagram_username}: #{inspect(reason)}")
+        {:error, {:stories, reason}}
+    end
+  end
+
+  defp scrape_result(results) do
+    if Enum.any?(results, fn result -> match?({:ok, _log}, result) end) do
+      :ok
+    else
+      {:error, Enum.map(results, fn {:error, reason} -> reason end)}
     end
   end
 
@@ -110,11 +144,13 @@ defmodule Instabot.Workers.ScrapeProfile do
     end
   end
 
-  defp broadcast_completion(profile) do
-    Phoenix.PubSub.broadcast(
-      Instabot.PubSub,
-      "scrape_updates:#{profile.user_id}",
-      {:scrape_completed, profile.id}
-    )
+  defp broadcast_result(profile, :ok), do: Events.broadcast(profile, :completed)
+
+  defp broadcast_result(profile, {:cancel, reason}) do
+    Events.broadcast(profile, :cancelled, %{error: reason, message: "Scrape cancelled: #{reason}"})
+  end
+
+  defp broadcast_result(profile, {:error, reason}) do
+    Events.broadcast(profile, :failed, %{error: inspect(reason), message: "Scrape failed"})
   end
 end

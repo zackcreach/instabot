@@ -5,6 +5,9 @@ defmodule InstabotWeb.StoriesLiveTest do
   import Instabot.InstagramFixtures
   import Phoenix.LiveViewTest
 
+  alias Instabot.Instagram.Events
+  alias InstabotWeb.DateTimeFormatter
+
   setup :register_and_log_in_user
 
   setup %{user: user} do
@@ -44,8 +47,8 @@ defmodule InstabotWeb.StoriesLiveTest do
 
       assert html =~ "breaking headline"
       assert html =~ "older story"
-      assert html =~ Calendar.strftime(now, "%B %d, %Y")
-      assert html =~ Calendar.strftime(two_days_ago, "%B %d, %Y")
+      assert html =~ DateTimeFormatter.long_date(now)
+      assert html =~ DateTimeFormatter.long_date(two_days_ago)
     end
   end
 
@@ -65,6 +68,22 @@ defmodule InstabotWeb.StoriesLiveTest do
 
       assert html =~ "breaking headline"
       refute html =~ "space news"
+    end
+  end
+
+  describe "PubSub instagram_event" do
+    test "refreshes stories when a new story is created", %{conn: conn, profile: profile} do
+      {:ok, view, _html} = live(conn, ~p"/feed/stories")
+
+      story =
+        story_fixture(profile, %{
+          instagram_story_id: "fresh_pubsub_story",
+          ocr_text: "fresh websocket story"
+        })
+
+      Events.broadcast_story_created(profile, story)
+
+      assert has_element?(view, "#story-#{story.id}")
     end
   end
 

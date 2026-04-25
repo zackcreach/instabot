@@ -10,7 +10,7 @@ defmodule InstabotWeb.UserAuthTest do
   alias Phoenix.Socket.Broadcast
 
   @remember_me_cookie "_instabot_web_user_remember_me"
-  @remember_me_cookie_max_age 60 * 60 * 24 * 14
+  @remember_me_cookie_max_age 60 * 60 * 24 * 400
 
   setup %{conn: conn} do
     conn =

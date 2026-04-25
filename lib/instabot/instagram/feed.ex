@@ -25,7 +25,7 @@ defmodule Instabot.Instagram.Feed do
   def list_posts(user_id, opts \\ []) do
     user_id
     |> posts_query(opts)
-    |> order_by([p, _tp], desc: p.posted_at, desc: p.inserted_at)
+    |> order_by([p, _tp], desc_nulls_last: p.posted_at, desc: p.inserted_at, desc: p.id)
     |> limit(^Keyword.get(opts, :limit, @default_limit))
     |> offset(^Keyword.get(opts, :offset, 0))
     |> preload([:post_images, :tracked_profile])
@@ -50,7 +50,7 @@ defmodule Instabot.Instagram.Feed do
   def list_stories(user_id, opts \\ []) do
     user_id
     |> stories_query(opts)
-    |> order_by([s, _tp], desc: s.posted_at, desc: s.inserted_at)
+    |> order_by([s, _tp], desc_nulls_last: s.posted_at, desc: s.inserted_at)
     |> limit(^Keyword.get(opts, :limit, @default_limit))
     |> offset(^Keyword.get(opts, :offset, 0))
     |> preload(:tracked_profile)
@@ -76,6 +76,11 @@ defmodule Instabot.Instagram.Feed do
     Post
     |> join(:inner, [p], tp in TrackedProfile, on: p.tracked_profile_id == tp.id)
     |> where([_p, tp], tp.user_id == ^user_id)
+    |> where(
+      [p, _tp],
+      fragment("NULLIF(btrim(?), '') IS NOT NULL", p.caption) or
+        fragment("cardinality(?) > 0", p.media_urls)
+    )
     |> filter_posts_by_profile(opts[:profile_id])
     |> filter_posts_by_search(opts[:search])
   end

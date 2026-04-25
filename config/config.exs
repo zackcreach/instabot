@@ -7,12 +7,14 @@
 # General application configuration
 import Config
 
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",
   instabot: [
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+      ~w(js/app.ts --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
   ]
@@ -36,6 +38,7 @@ config :instabot, Instabot.Repo,
 
 config :instabot, Instabot.Scraper,
   playwright_path: Path.expand("../assets/playwright", __DIR__),
+  bridge_script: Path.expand("../assets/playwright/dist/playwright_bridge.js", __DIR__),
   node_path: "node",
   browser_timeout: 30_000,
   command_timeout: 60_000,

@@ -3,7 +3,7 @@ defmodule Instabot.Scraper.BrowserTest do
 
   alias Instabot.Scraper.Browser
 
-  @mock_bridge_path Path.expand("../../../test/support/mock_bridge.js", __DIR__)
+  @mock_bridge_path Path.expand("../../../test/support/dist/mock_bridge.js", __DIR__)
 
   defp start_mock_browser do
     original_config = Application.get_env(:instabot, Instabot.Scraper)

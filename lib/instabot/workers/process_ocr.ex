@@ -10,26 +10,40 @@ defmodule Instabot.Workers.ProcessOCR do
   alias Instabot.OCR
   alias Instabot.Workers.SendImmediateNotification
 
+  require Logger
+
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"story_id" => story_id}}) do
     story = Instagram.get_story!(story_id)
 
     case story.ocr_status do
-      "pending" -> run_ocr(story)
+      status when status in ["pending", "failed"] -> run_ocr(story)
       _already_processed -> notify_immediate_digest(story)
     end
   end
 
   defp run_ocr(story) do
     result =
-      with {:ok, _story} <- Instagram.update_story_ocr(story, %{ocr_status: "processing"}),
+      with {:ok, processing_story} <- Instagram.update_story_ocr(story, %{ocr_status: "processing"}),
            {:ok, text} <- OCR.extract_text(story.screenshot_path) do
-        Instagram.update_story_ocr(story, %{ocr_text: text, ocr_status: "completed"})
+        Instagram.update_story_ocr(processing_story, %{ocr_text: text, ocr_status: "completed"})
         :ok
       else
+        {:error, :tesseract_not_installed} = error ->
+          story.id
+          |> Instagram.get_story!()
+          |> Instagram.update_story_ocr(%{ocr_status: "pending"})
+
+          Logger.warning("OCR unavailable for story #{story.id}: :tesseract_not_installed")
+          error
+
         {:error, reason} ->
-          Instagram.update_story_ocr(story, %{ocr_status: "failed"})
-          {:error, reason}
+          story.id
+          |> Instagram.get_story!()
+          |> Instagram.update_story_ocr(%{ocr_status: "failed"})
+
+          Logger.warning("OCR failed for story #{story.id}: #{inspect(reason)}")
+          :ok
       end
 
     notify_immediate_digest(story)

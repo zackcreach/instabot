@@ -1,5 +1,5 @@
 defmodule Instabot.OCRTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Instabot.OCR
 
@@ -13,7 +13,47 @@ defmodule Instabot.OCRTest do
     test "returns error for non-existent file or missing tesseract" do
       result = OCR.extract_text("/nonexistent/path.png")
       assert {:error, reason} = result
-      assert reason in [:file_not_found, :tesseract_not_installed]
+      assert :file_not_found == reason
+    end
+
+    test "extracts text through the tesseract executable" do
+      with_fake_tesseract("""
+      #!/bin/sh
+      echo "Story headline"
+      exit 0
+      """)
+
+      image_path = temp_image_path()
+      File.write!(image_path, "image")
+
+      assert {:ok, "Story headline"} == OCR.extract_text(image_path)
+    end
+
+    test "does not include tesseract stderr diagnostics in extracted text" do
+      with_fake_tesseract("""
+      #!/bin/sh
+      echo "Estimating resolution as 242" >&2
+      echo "OPEN HOURS"
+      exit 0
+      """)
+
+      image_path = temp_image_path()
+      File.write!(image_path, "image")
+
+      assert {:ok, "OPEN HOURS"} == OCR.extract_text(image_path)
+    end
+
+    test "returns tesseract failures with status and output" do
+      with_fake_tesseract("""
+      #!/bin/sh
+      echo "image unreadable" >&2
+      exit 1
+      """)
+
+      image_path = temp_image_path()
+      File.write!(image_path, "image")
+
+      assert {:error, {:ocr_failed, 1, "image unreadable"}} == OCR.extract_text(image_path)
     end
 
     @tag :external
@@ -27,5 +67,26 @@ defmodule Instabot.OCRTest do
         end
       end
     end
+  end
+
+  defp with_fake_tesseract(contents) do
+    previous_path = System.get_env("PATH", "")
+    directory = Path.join(System.tmp_dir!(), "instabot_ocr_#{System.unique_integer([:positive])}")
+    executable = Path.join(directory, "tesseract")
+
+    File.mkdir_p!(directory)
+    File.write!(executable, contents)
+    File.chmod!(executable, 0o755)
+
+    System.put_env("PATH", "#{directory}:#{previous_path}")
+
+    on_exit(fn ->
+      System.put_env("PATH", previous_path)
+      File.rm_rf(directory)
+    end)
+  end
+
+  defp temp_image_path do
+    Path.join(System.tmp_dir!(), "instabot_ocr_image_#{System.unique_integer([:positive])}.png")
   end
 end

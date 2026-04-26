@@ -76,6 +76,28 @@ defmodule Instabot.Notifications.DigestEmailTest do
     assert email.text_body =~ "OCR: pending"
   end
 
+  test "renders digest period in Eastern time with daylight saving abbreviation", context do
+    email = build_email(context, %{posts: [], stories: []})
+
+    assert email.html_body =~ "2026-04-25 13:35 EDT – 2026-04-25 13:36 EDT"
+    assert email.text_body =~ "Period: 2026-04-25 13:35 EDT – 2026-04-25 13:36 EDT"
+    refute email.html_body =~ "UTC"
+    refute email.text_body =~ "UTC"
+  end
+
+  test "renders standard Eastern time outside daylight saving", context do
+    email =
+      DigestEmail.build(context.user, context.preference, %{
+        posts: [],
+        stories: [],
+        period_start: ~U[2026-01-15 17:35:00Z],
+        period_end: ~U[2026-01-15 17:36:00Z]
+      })
+
+    assert email.html_body =~ "2026-01-15 12:35 EST – 2026-01-15 12:36 EST"
+    assert email.text_body =~ "Period: 2026-01-15 12:35 EST – 2026-01-15 12:36 EST"
+  end
+
   test "omits media previews when image inclusion is disabled", context do
     {:ok, preference} = Notifications.update_preference(context.preference, %{include_images: false})
 

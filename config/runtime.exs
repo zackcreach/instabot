@@ -75,8 +75,10 @@ if config_env() == :prod do
   host = System.get_env("PHX_HOST") || "example.com"
   scheme = System.get_env("PHX_SCHEME") || "http"
   url_port = String.to_integer(System.get_env("PHX_PORT") || Integer.to_string(port))
+
   check_origin =
-    System.get_env("PHX_CHECK_ORIGIN", "#{scheme}://#{host}:#{url_port}")
+    "PHX_CHECK_ORIGIN"
+    |> System.get_env("#{scheme}://#{host}:#{url_port}")
     |> String.split(",", trim: true)
 
   mailgun_api_key =

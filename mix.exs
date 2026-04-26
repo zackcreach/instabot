@@ -67,7 +67,6 @@ defmodule Instabot.MixProject do
       {:uxid, "~> 0.2.3"},
       {:oban, "~> 2.18"},
       {:hammer, "~> 6.2"},
-      {:tesseract_ocr, "~> 0.1"},
       {:tzdata, "~> 1.1"},
       {:styler, "~> 1.4", only: [:dev, :test], runtime: false}
     ]

@@ -105,6 +105,37 @@ defmodule Instabot.InstagramTest do
       assert story.id == updated_story.id
       assert "priv/static/screenshots/refreshed.png" == updated_story.screenshot_path
       assert "https://example.com/story.jpg" == updated_story.media_url
+      assert "pending" == updated_story.ocr_status
+      assert nil == updated_story.ocr_text
+    end
+
+    test "queues OCR again when a failed story gets a new screenshot" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+      posted_at = DateTime.utc_now(:second)
+
+      story =
+        story_fixture(profile, %{
+          instagram_story_id: "failed_story",
+          screenshot_path: "priv/static/screenshots/failed.png",
+          ocr_status: "failed",
+          ocr_text: nil,
+          posted_at: posted_at
+        })
+
+      assert {:ok, updated_story, :updated} =
+               Instagram.upsert_story_from_scrape(profile.id, %{
+                 instagram_story_id: "failed_story",
+                 story_type: "image",
+                 screenshot_path: "priv/static/screenshots/retry.png",
+                 posted_at: posted_at,
+                 expires_at: DateTime.add(posted_at, 1, :day)
+               })
+
+      assert story.id == updated_story.id
+      assert "pending" == updated_story.ocr_status
+      assert [pending_story] = Instagram.get_stories_pending_ocr(profile.id)
+      assert updated_story.id == pending_story.id
     end
 
     test "does not replace useful story details with blank scrape data" do

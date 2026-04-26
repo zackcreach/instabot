@@ -13,12 +13,15 @@ defmodule Instabot.Workers.ProcessOCRTest do
   setup do
     user = user_fixture()
     profile = tracked_profile_fixture(user)
+    screenshot_path = Path.join(System.tmp_dir!(), "process_ocr_#{System.unique_integer([:positive])}.png")
+
+    on_exit(fn -> File.rm(screenshot_path) end)
 
     {:ok, story} =
       Instagram.create_story(profile.id, %{
         instagram_story_id: "story_#{System.unique_integer([:positive])}",
         story_type: "image",
-        screenshot_path: "/tmp/test_screenshot.png",
+        screenshot_path: screenshot_path,
         ocr_status: "pending"
       })
 
@@ -38,9 +41,7 @@ defmodule Instabot.Workers.ProcessOCRTest do
     end
 
     test "sets status to failed when OCR cannot process", %{story: story} do
-      result = ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
-      assert {:error, reason} = result
-      assert reason in [:file_not_found, :tesseract_not_installed]
+      assert :ok == ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
 
       refreshed = Instagram.get_story!(story.id)
       assert "failed" == refreshed.ocr_status
@@ -50,8 +51,7 @@ defmodule Instabot.Workers.ProcessOCRTest do
       preference = Notifications.get_or_create_preference(profile.user_id)
       {:ok, _preference} = Notifications.update_preference(preference, %{frequency: "immediate"})
 
-      assert {:error, reason} = ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
-      assert reason in [:file_not_found, :tesseract_not_installed]
+      assert :ok == ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
 
       assert_enqueued(worker: SendImmediateNotification, args: %{user_id: profile.user_id})
     end
@@ -71,15 +71,13 @@ defmodule Instabot.Workers.ProcessOCRTest do
           ocr_status: "pending"
         })
 
-      assert {:error, reason} = ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
-      assert reason in [:file_not_found, :tesseract_not_installed]
+      assert :ok == ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
 
       refute_enqueued(worker: SendImmediateNotification, args: %{user_id: profile.user_id})
     end
 
-    test "sets status to failed when tesseract is not installed", %{story: story} do
-      File.mkdir_p!("/tmp")
-      File.write!("/tmp/test_screenshot.png", <<0x89, 0x50, 0x4E, 0x47>>)
+    test "leaves OCR pending when tesseract is not installed", %{story: story} do
+      File.write!(story.screenshot_path, <<0x89, 0x50, 0x4E, 0x47>>)
 
       result = ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
 
@@ -89,10 +87,8 @@ defmodule Instabot.Workers.ProcessOCRTest do
         assert refreshed.ocr_status in ["completed", "failed"]
       else
         assert {:error, :tesseract_not_installed} == result
-        assert "failed" == refreshed.ocr_status
+        assert "pending" == refreshed.ocr_status
       end
-
-      File.rm("/tmp/test_screenshot.png")
     end
   end
 end

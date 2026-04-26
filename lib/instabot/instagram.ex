@@ -198,7 +198,7 @@ defmodule Instabot.Instagram do
   def get_stories_pending_ocr(tracked_profile_id) do
     Story
     |> where(tracked_profile_id: ^tracked_profile_id)
-    |> where([s], s.ocr_status == "pending" and not is_nil(s.screenshot_path))
+    |> where([s], s.ocr_status in ["pending", "failed"] and not is_nil(s.screenshot_path))
     |> Repo.all()
   end
 
@@ -267,8 +267,23 @@ defmodule Instabot.Instagram do
     |> Enum.reject(fn {key, value} ->
       blank_scrape_value?(key, value) and not blank_existing_value?(Map.get(record, key))
     end)
+    |> reset_story_ocr_attrs(record)
     |> Map.new()
   end
+
+  defp reset_story_ocr_attrs(attrs, %Story{} = story) do
+    case Keyword.get(attrs, :screenshot_path) do
+      screenshot_path when is_binary(screenshot_path) and screenshot_path != story.screenshot_path ->
+        attrs
+        |> Keyword.put(:ocr_status, "pending")
+        |> Keyword.put(:ocr_text, nil)
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp reset_story_ocr_attrs(attrs, _record), do: attrs
 
   defp normalize_attrs(attrs) do
     Enum.reduce(attrs, %{}, fn {key, value}, acc ->

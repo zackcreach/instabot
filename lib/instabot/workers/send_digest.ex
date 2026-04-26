@@ -76,8 +76,8 @@ defmodule Instabot.Workers.SendDigest do
 
   defp story_waiting_for_ocr?(%{ocr_text: text}) when is_binary(text) and text != "", do: false
 
-  defp story_waiting_for_ocr?(%{ocr_status: "pending", screenshot_path: screenshot_path})
-       when is_binary(screenshot_path) and screenshot_path != "" do
+  defp story_waiting_for_ocr?(%{ocr_status: status, screenshot_path: screenshot_path})
+       when status in ["pending", "failed"] and is_binary(screenshot_path) and screenshot_path != "" do
     true
   end
 

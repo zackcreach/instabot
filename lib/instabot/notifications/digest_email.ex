@@ -10,6 +10,8 @@ defmodule Instabot.Notifications.DigestEmail do
   alias Instabot.Media
   alias Instabot.Notifications.NotificationPreference
 
+  @eastern_time_zone "America/New_York"
+
   @spec build(User.t(), NotificationPreference.t(), map()) :: Swoosh.Email.t()
   def build(user, preference, %{posts: posts, stories: stories, period_start: period_start, period_end: period_end}) do
     recipient = preference.email_address || user.email
@@ -367,6 +369,18 @@ defmodule Instabot.Notifications.DigestEmail do
   defp absolute_url("/" <> _ = path), do: InstabotWeb.Endpoint.url() <> path
   defp absolute_url(url), do: url
 
-  defp format_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
+  defp format_datetime(%DateTime{} = datetime) do
+    datetime
+    |> eastern_datetime()
+    |> Calendar.strftime("%Y-%m-%d %H:%M %Z")
+  end
+
   defp format_datetime(_), do: "N/A"
+
+  defp eastern_datetime(datetime) do
+    case DateTime.shift_zone(datetime, @eastern_time_zone) do
+      {:ok, eastern_datetime} -> eastern_datetime
+      {:error, _reason} -> datetime
+    end
+  end
 end

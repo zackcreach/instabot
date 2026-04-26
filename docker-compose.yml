@@ -5,11 +5,14 @@ services:
     container_name: instabot
     ports:
       - "4002:4002"
+    env_file:
+      - .env
     environment:
       - PHX_SERVER=true
       - PHX_HOST=symphony
       - PHX_SCHEME=http
       - PHX_PORT=4002
+      - PHX_CHECK_ORIGIN=http://symphony:4002,http://localhost:4002
       - PORT=4002
       - POOL_SIZE=10
       - MIX_ENV=prod
@@ -19,10 +22,6 @@ services:
       - INSTABOT_UPLOADS_DIR=/app/priv/static/uploads
       - INSTABOT_SCREENSHOT_DIR=/app/priv/static/screenshots
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
-      - MAILGUN_FROM_EMAIL=${MAILGUN_FROM_EMAIL}
     depends_on:
       db:
         condition: service_healthy

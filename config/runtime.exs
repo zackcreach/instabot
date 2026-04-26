@@ -75,6 +75,9 @@ if config_env() == :prod do
   host = System.get_env("PHX_HOST") || "example.com"
   scheme = System.get_env("PHX_SCHEME") || "http"
   url_port = String.to_integer(System.get_env("PHX_PORT") || Integer.to_string(port))
+  check_origin =
+    System.get_env("PHX_CHECK_ORIGIN", "#{scheme}://#{host}:#{url_port}")
+    |> String.split(",", trim: true)
 
   mailgun_api_key =
     System.get_env("MAILGUN_API_KEY") ||
@@ -105,6 +108,7 @@ if config_env() == :prod do
 
   config :instabot, InstabotWeb.Endpoint,
     url: [host: host, port: url_port, scheme: scheme],
+    check_origin: check_origin,
     http: [
       # Enable IPv6 and bind on all interfaces.
       #

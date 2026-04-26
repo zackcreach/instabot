@@ -9,9 +9,9 @@ FROM node:20-bullseye-slim AS node_base
 FROM ${BUILDER_IMAGE} AS builder
 
 COPY --from=node_base /usr/local/bin/node /usr/local/bin/node
-COPY --from=node_base /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=node_base /usr/local/bin/npx /usr/local/bin/npx
 COPY --from=node_base /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+  ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 RUN apt-get update -y && \
   apt-get install -y build-essential git python3 ca-certificates && \
@@ -34,15 +34,14 @@ RUN mix deps.compile
 
 COPY assets/package.json assets/package-lock.json assets/
 RUN npm ci --include=dev --prefix assets
+RUN npx --prefix assets playwright install chromium
 
 COPY assets assets
-RUN npm run build:bridge --prefix assets
 
 COPY priv priv
 COPY lib lib
-RUN mix assets.deploy
-
 RUN mix compile
+RUN mix assets.deploy
 
 COPY config/runtime.exs config/
 COPY rel rel
@@ -53,9 +52,9 @@ RUN mix release
 FROM ${RUNNER_IMAGE}
 
 COPY --from=node_base /usr/local/bin/node /usr/local/bin/node
-COPY --from=node_base /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=node_base /usr/local/bin/npx /usr/local/bin/npx
 COPY --from=node_base /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+  ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 RUN apt-get update -y && \
   apt-get install -y \

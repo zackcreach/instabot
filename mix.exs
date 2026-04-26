@@ -86,13 +86,15 @@ defmodule Instabot.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["assets.npm", "ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.npm": ["cmd --cd assets npm ci --include=dev", "assets.bridge"],
+      "assets.npm.prod": ["cmd --cd assets npm ci --include=dev", "assets.bridge.prod"],
       "assets.bridge": ["cmd --cd assets npm run build:bridge"],
+      "assets.bridge.prod": ["cmd --cd assets npx tsc --project tsconfig.playwright.json"],
       "assets.test": ["assets.npm", "cmd --cd assets npm run typecheck", "cmd --cd assets npm test"],
       "playwright.install": ["cmd --cd assets npx playwright install chromium"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind instabot", "esbuild instabot"],
       "assets.deploy": [
-        "assets.npm",
+        "assets.npm.prod",
         "tailwind instabot --minify",
         "esbuild instabot --minify",
         "phx.digest"

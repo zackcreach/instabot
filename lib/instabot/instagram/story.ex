@@ -10,6 +10,12 @@ defmodule Instabot.Instagram.Story do
   schema "stories" do
     field :instagram_story_id, :string
     field :screenshot_path, :string
+    field :screenshot_url, :string
+    field :screenshot_cloudinary_public_id, :string
+    field :screenshot_cloudinary_version, :string
+    field :screenshot_cloudinary_format, :string
+    field :screenshot_width, :integer
+    field :screenshot_height, :integer
     field :ocr_text, :string
     field :ocr_status, :string, default: "pending"
     field :story_type, :string
@@ -27,6 +33,12 @@ defmodule Instabot.Instagram.Story do
     |> cast(attrs, [
       :instagram_story_id,
       :screenshot_path,
+      :screenshot_url,
+      :screenshot_cloudinary_public_id,
+      :screenshot_cloudinary_version,
+      :screenshot_cloudinary_format,
+      :screenshot_width,
+      :screenshot_height,
       :ocr_text,
       :ocr_status,
       :story_type,

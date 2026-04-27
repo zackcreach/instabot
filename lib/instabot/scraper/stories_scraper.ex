@@ -9,6 +9,7 @@ defmodule Instabot.Scraper.StoriesScraper do
   alias Instabot.Instagram.Events
   alias Instabot.Instagram.InstagramConnection
   alias Instabot.Instagram.TrackedProfile
+  alias Instabot.Media
   alias Instabot.Scraper.AntiDetection
   alias Instabot.Scraper.Browser
   alias Instabot.Scraper.Parser
@@ -231,20 +232,20 @@ defmodule Instabot.Scraper.StoriesScraper do
   end
 
   defp persist_stories(profile, stories) do
-    screenshot_dir = screenshot_dir_for_profile(profile)
-    File.mkdir_p!(screenshot_dir)
-
     Enum.count(stories, fn story ->
-      screenshot_path = save_screenshot(screenshot_dir, story)
+      screenshot_attrs = upload_screenshot(profile, story)
 
-      story_attrs = %{
-        instagram_story_id: story.instagram_story_id,
-        story_type: story.story_type,
-        media_url: story.media_url,
-        posted_at: story.posted_at,
-        expires_at: story.expires_at,
-        screenshot_path: screenshot_path
-      }
+      story_attrs =
+        Map.merge(
+          %{
+            instagram_story_id: story.instagram_story_id,
+            story_type: story.story_type,
+            media_url: story.media_url,
+            posted_at: story.posted_at,
+            expires_at: story.expires_at
+          },
+          screenshot_attrs
+        )
 
       case Instagram.upsert_story_from_scrape(profile.id, story_attrs) do
         {:ok, story, status} when status in [:inserted, :updated] ->
@@ -260,22 +261,27 @@ defmodule Instabot.Scraper.StoriesScraper do
     end)
   end
 
-  defp save_screenshot(screenshot_dir, %{screenshot_base64: base64, instagram_story_id: story_id})
-       when is_binary(base64) do
+  defp upload_screenshot(profile, %{screenshot_base64: base64, instagram_story_id: story_id}) when is_binary(base64) do
+    subdirectory = Path.join("stories", profile.id)
     filename = "#{story_id}.png"
-    path = Path.join(screenshot_dir, filename)
-    File.write!(path, Base.decode64!(base64))
-    path
+
+    case Media.upload_image(Base.decode64!(base64), subdirectory, filename, content_type: "image/png") do
+      {:ok, result} ->
+        %{
+          screenshot_path: result[:local_path],
+          screenshot_url: result[:cloudinary_secure_url],
+          screenshot_cloudinary_public_id: result[:cloudinary_public_id],
+          screenshot_cloudinary_version: result[:cloudinary_version],
+          screenshot_cloudinary_format: result[:cloudinary_format],
+          screenshot_width: result[:width],
+          screenshot_height: result[:height]
+        }
+
+      {:error, reason} ->
+        Logger.warning("Failed to upload story screenshot #{story_id}: #{inspect(reason)}")
+        %{}
+    end
   end
 
-  defp save_screenshot(_screenshot_dir, _story), do: nil
-
-  defp screenshot_dir_for_profile(profile) do
-    base_dir = scraper_config()[:screenshot_dir] || "priv/static/screenshots"
-    Path.join(base_dir, profile.id)
-  end
-
-  defp scraper_config do
-    Application.get_env(:instabot, Instabot.Scraper, [])
-  end
+  defp upload_screenshot(_profile, _story), do: %{}
 end

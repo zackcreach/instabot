@@ -5,6 +5,8 @@ defmodule Instabot.Workers.DownloadImageTest do
   import Instabot.InstagramFixtures
 
   alias Instabot.Instagram
+  alias Instabot.Media
+  alias Instabot.Media.Cloudinary
   alias Instabot.Workers.DownloadImage
 
   @test_uploads_dir "test/tmp/uploads_worker"
@@ -57,6 +59,65 @@ defmodule Instabot.Workers.DownloadImageTest do
       assert File.exists?(post_image.local_path)
     end
 
+    test "creates post image records from Cloudinary metadata", %{post: post} do
+      bypass = Bypass.open()
+      previous_media_config = Application.get_env(:instabot, Media)
+      previous_cloudinary_config = Application.get_env(:instabot, Cloudinary)
+
+      Application.put_env(:instabot, Media, storage_adapter: Cloudinary)
+
+      Application.put_env(:instabot, Cloudinary,
+        cloud_name: "demo",
+        api_key: "key",
+        api_secret: "secret",
+        folder: "instabot/test",
+        endpoint: "http://localhost:#{bypass.port}"
+      )
+
+      on_exit(fn ->
+        restore_config(Media, previous_media_config)
+        restore_config(Cloudinary, previous_cloudinary_config)
+      end)
+
+      Bypass.expect_once(bypass, "POST", "/demo/image/upload", fn conn ->
+        Plug.Conn.resp(
+          conn,
+          200,
+          Jason.encode!(%{
+            public_id: "instabot/test/#{post.id}/image_0",
+            secure_url: "https://res.cloudinary.com/demo/image/upload/v1/#{post.id}/image_0.jpg",
+            version: 1,
+            format: "jpg",
+            resource_type: "image",
+            bytes: 4,
+            width: 100,
+            height: 100
+          })
+        )
+      end)
+
+      Bypass.expect_once(bypass, "GET", "/photo.jpg", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("image/jpeg")
+        |> Plug.Conn.resp(200, <<0xFF, 0xD8, 0xFF, 0xE0>>)
+      end)
+
+      url = "http://localhost:#{bypass.port}/photo.jpg"
+
+      assert :ok ==
+               DownloadImage.perform(%Oban.Job{
+                 args: %{"post_id" => post.id, "url" => url, "position" => 0}
+               })
+
+      post_with_images = Repo.preload(post, :post_images)
+      assert [post_image] = post_with_images.post_images
+      assert nil == post_image.local_path
+      assert "https://res.cloudinary.com/demo/image/upload/v1/#{post.id}/image_0.jpg" == post_image.cloudinary_secure_url
+      assert "instabot/test/#{post.id}/image_0" == post_image.cloudinary_public_id
+      assert 100 == post_image.width
+      assert 100 == post_image.height
+    end
+
     test "returns error on HTTP failure", %{post: post} do
       bypass = Bypass.open()
 
@@ -93,4 +154,7 @@ defmodule Instabot.Workers.DownloadImageTest do
       assert String.ends_with?(image.local_path, "image_2.jpg")
     end
   end
+
+  defp restore_config(module, nil), do: Application.delete_env(:instabot, module)
+  defp restore_config(module, config), do: Application.put_env(:instabot, module, config)
 end

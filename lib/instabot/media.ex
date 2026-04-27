@@ -3,7 +3,10 @@ defmodule Instabot.Media do
   Image download and filesystem management for scraped Instagram media.
   """
 
+  alias Instabot.Media.LocalStorage
+
   @default_uploads_dir "priv/static/uploads"
+  @default_storage_adapter LocalStorage
 
   @spec uploads_dir() :: String.t()
   def uploads_dir do
@@ -29,6 +32,44 @@ defmodule Instabot.Media do
         {:error, reason} ->
           {:error, {:write_failed, reason}}
       end
+    end
+  end
+
+  @spec download_and_upload(String.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def download_and_upload(url, subdirectory, filename) do
+    with {:ok, response} <- fetch(url) do
+      content_type = extract_content_type(response.headers, url)
+
+      response.body
+      |> upload_image(subdirectory, filename,
+        content_type: content_type,
+        public_id: Path.join(subdirectory, Path.rootname(filename))
+      )
+      |> merge_upload_metadata(%{
+        original_url: url,
+        content_type: content_type,
+        file_size: byte_size(response.body)
+      })
+    end
+  end
+
+  @spec upload_image(binary(), String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def upload_image(bytes, subdirectory, filename, opts \\ []) when is_binary(bytes) do
+    opts =
+      opts
+      |> Keyword.put(:subdirectory, subdirectory)
+      |> Keyword.put(:filename, filename)
+      |> Keyword.put_new(:public_id, Path.join(subdirectory, Path.rootname(filename)))
+
+    storage_adapter().upload_image(bytes, opts)
+  end
+
+  @spec download_to_temp(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def download_to_temp(path_or_url) when is_binary(path_or_url) do
+    if String.starts_with?(path_or_url, "http://") or String.starts_with?(path_or_url, "https://") do
+      Instabot.Media.Cloudinary.download_to_temp(path_or_url, [])
+    else
+      LocalStorage.download_to_temp(path_or_url, [])
     end
   end
 
@@ -58,6 +99,15 @@ defmodule Instabot.Media do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp storage_adapter do
+    :instabot
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:storage_adapter, @default_storage_adapter)
+  end
+
+  defp merge_upload_metadata({:ok, upload}, metadata), do: {:ok, Map.merge(metadata, upload)}
+  defp merge_upload_metadata({:error, reason}, _metadata), do: {:error, reason}
 
   defp fetch(url) do
     case Req.get(url, decode_body: false, max_retries: 2) do

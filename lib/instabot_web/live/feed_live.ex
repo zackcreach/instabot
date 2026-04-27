@@ -385,7 +385,11 @@ defmodule InstabotWeb.FeedLive do
     |> assign(:total_posts, Feed.count_posts(user_id, opts))
   end
 
-  defp thumbnail_for(%{post_images: [%{local_path: path} | _]}) when is_binary(path), do: Instabot.Media.to_url(path)
+  defp thumbnail_for(%{post_images: images}) when is_list(images) and images != [] do
+    images
+    |> Enum.sort_by(& &1.position)
+    |> Enum.find_value(&post_image_url/1)
+  end
 
   defp thumbnail_for(%{media_urls: [url | _]}) when is_binary(url), do: url
 
@@ -396,14 +400,18 @@ defmodule InstabotWeb.FeedLive do
   defp image_count(_post), do: 0
 
   defp current_image(%{post_images: images}, index) when is_list(images) and images != [] do
-    case Enum.at(images, index) do
-      %{local_path: path} -> Instabot.Media.to_url(path)
-      _ -> nil
-    end
+    images
+    |> Enum.sort_by(& &1.position)
+    |> Enum.at(index)
+    |> post_image_url()
   end
 
   defp current_image(%{media_urls: urls}, index) when is_list(urls), do: Enum.at(urls, index)
   defp current_image(_post, _index), do: nil
+
+  defp post_image_url(%{cloudinary_secure_url: url}) when is_binary(url) and url != "", do: url
+  defp post_image_url(%{local_path: path}) when is_binary(path) and path != "", do: Instabot.Media.to_url(path)
+  defp post_image_url(_post_image), do: nil
 
   defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Instabot.Media.to_url(url)
   defp profile_avatar_url(_profile), do: nil

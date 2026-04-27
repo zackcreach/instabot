@@ -76,12 +76,22 @@ defmodule Instabot.Workers.SendDigest do
 
   defp story_waiting_for_ocr?(%{ocr_text: text}) when is_binary(text) and text != "", do: false
 
-  defp story_waiting_for_ocr?(%{ocr_status: status, screenshot_path: screenshot_path})
-       when status in ["pending", "failed"] and is_binary(screenshot_path) and screenshot_path != "" do
-    true
+  defp story_waiting_for_ocr?(%{ocr_status: status} = story) when status in ["pending", "failed"] do
+    story_has_screenshot?(story)
   end
 
   defp story_waiting_for_ocr?(_story), do: false
+
+  defp story_has_screenshot?(%{screenshot_url: screenshot_url}) when is_binary(screenshot_url) and screenshot_url != "" do
+    true
+  end
+
+  defp story_has_screenshot?(%{screenshot_path: screenshot_path})
+       when is_binary(screenshot_path) and screenshot_path != "" do
+    true
+  end
+
+  defp story_has_screenshot?(_story), do: false
 
   defp determine_period_start(user_id, digest_type) do
     case Notifications.last_digest_for_user(user_id, digest_type) do

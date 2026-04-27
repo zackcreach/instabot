@@ -335,7 +335,7 @@ defmodule Instabot.Notifications.DigestEmail do
   defp post_media_urls(%{post_images: post_images}) when is_list(post_images) and post_images != [] do
     post_images
     |> Enum.sort_by(& &1.position)
-    |> Enum.map(&absolute_media_url(&1.local_path))
+    |> Enum.map(&post_image_url/1)
     |> Enum.reject(&is_nil/1)
   end
 
@@ -347,6 +347,10 @@ defmodule Instabot.Notifications.DigestEmail do
 
   defp post_media_urls(_post), do: []
 
+  defp story_preview_url(%{screenshot_url: screenshot_url}) when is_binary(screenshot_url) and screenshot_url != "" do
+    absolute_media_url(screenshot_url)
+  end
+
   defp story_preview_url(%{screenshot_path: screenshot_path}) when is_binary(screenshot_path) and screenshot_path != "" do
     absolute_media_url(screenshot_path)
   end
@@ -356,6 +360,10 @@ defmodule Instabot.Notifications.DigestEmail do
   end
 
   defp story_preview_url(_story), do: nil
+
+  defp post_image_url(%{cloudinary_secure_url: url}) when is_binary(url) and url != "", do: absolute_media_url(url)
+  defp post_image_url(%{local_path: path}) when is_binary(path) and path != "", do: absolute_media_url(path)
+  defp post_image_url(_post_image), do: nil
 
   defp absolute_media_url(nil), do: nil
   defp absolute_media_url(""), do: nil

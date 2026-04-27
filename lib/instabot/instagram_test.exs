@@ -138,6 +138,38 @@ defmodule Instabot.InstagramTest do
       assert updated_story.id == pending_story.id
     end
 
+    test "queues OCR again when a story gets a new hosted screenshot URL" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+      posted_at = DateTime.utc_now(:second)
+
+      story =
+        story_fixture(profile, %{
+          instagram_story_id: "hosted_story",
+          screenshot_path: nil,
+          screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/old.png",
+          ocr_status: "completed",
+          ocr_text: "old text",
+          posted_at: posted_at
+        })
+
+      assert {:ok, updated_story, :updated} =
+               Instagram.upsert_story_from_scrape(profile.id, %{
+                 instagram_story_id: "hosted_story",
+                 story_type: "image",
+                 screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/new.png",
+                 posted_at: posted_at,
+                 expires_at: DateTime.add(posted_at, 1, :day)
+               })
+
+      assert story.id == updated_story.id
+      assert "https://res.cloudinary.com/demo/image/upload/v1/stories/new.png" == updated_story.screenshot_url
+      assert "pending" == updated_story.ocr_status
+      assert nil == updated_story.ocr_text
+      assert [pending_story] = Instagram.get_stories_pending_ocr(profile.id)
+      assert updated_story.id == pending_story.id
+    end
+
     test "does not replace useful story details with blank scrape data" do
       user = user_fixture()
       profile = tracked_profile_fixture(user)

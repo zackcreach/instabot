@@ -92,4 +92,29 @@ defmodule Instabot.MediaTest do
       assert {:ok, %{content_type: "image/png"}} = Media.download_and_save(url, "test_post", "image_0.png")
     end
   end
+
+  describe "download_and_upload/3" do
+    test "downloads bytes and sends them to the configured storage adapter" do
+      bypass = Bypass.open()
+
+      Bypass.expect_once(bypass, "GET", "/image.jpg", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("image/jpeg")
+        |> Plug.Conn.resp(200, <<0xFF, 0xD8, 0xFF, 0xE0>>)
+      end)
+
+      url = "http://localhost:#{bypass.port}/image.jpg"
+      assert {:ok, result} = Media.download_and_upload(url, "test_post", "image_0.jpg")
+
+      assert %{
+               original_url: ^url,
+               local_path: local_path,
+               content_type: "image/jpeg",
+               file_size: 4
+             } = result
+
+      assert String.ends_with?(local_path, "test_post/image_0.jpg")
+      assert File.exists?(local_path)
+    end
+  end
 end

@@ -158,6 +158,23 @@ defmodule InstabotWeb.StoriesLiveTest do
       assert_patched(view, ~p"/feed/stories/#{story.id}")
     end
 
+    test "modal prefers Cloudinary story screenshot URLs", %{conn: conn, profile: profile} do
+      story =
+        story_fixture(profile, %{
+          instagram_story_id: "cloudinary_story",
+          screenshot_path: nil,
+          screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/story.png",
+          media_url: "https://example.com/story.jpg"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/feed/stories/#{story.id}")
+
+      assert has_element?(
+               view,
+               "#story-modal-image-link[href='https://res.cloudinary.com/demo/image/upload/v1/stories/story.png'][target='_blank']"
+             )
+    end
+
     test "closing the modal patches back to /feed/stories", %{conn: conn, story: story} do
       {:ok, view, _html} = live(conn, ~p"/feed/stories/#{story.id}")
 

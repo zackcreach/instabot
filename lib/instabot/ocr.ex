@@ -3,7 +3,7 @@ defmodule Instabot.OCR do
   Tesseract OCR wrapper for extracting text from story screenshots.
   """
 
-  @minimum_confidence 50.0
+  @minimum_confidence 60.0
   @fallback_confidence 35.0
   @ignored_words ~w(instagram instagnam)
 
@@ -123,15 +123,16 @@ defmodule Instabot.OCR do
   defp visible_word?(%{text: ""}, _minimum_confidence), do: false
 
   defp visible_word?(%{confidence: confidence, text: text}, minimum_confidence) do
-    not ignored_word?(text) and (confidence >= minimum_confidence or email?(text))
+    meaningful_word?(text) and not ignored_word?(text) and (confidence >= minimum_confidence or email?(text))
   end
 
   defp email?(text), do: String.match?(text, ~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
+  defp meaningful_word?(text), do: email?(text) or String.match?(text, ~r/[[:alnum:]]/u)
 
   defp ignored_word?(text) do
     text
     |> String.downcase()
-    |> then(&(&1 in @ignored_words))
+    |> Kernel.in(@ignored_words)
   end
 
   defp clean_line(line) do

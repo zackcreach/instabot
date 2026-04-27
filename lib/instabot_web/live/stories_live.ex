@@ -314,6 +314,10 @@ defmodule InstabotWeb.StoriesLive do
   defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Media.to_url(url)
   defp profile_avatar_url(_profile), do: nil
 
+  defp story_preview_url(%{screenshot_url: screenshot_url}) when is_binary(screenshot_url) and screenshot_url != "" do
+    screenshot_url
+  end
+
   defp story_preview_url(%{screenshot_path: screenshot_path} = story)
        when is_binary(screenshot_path) and screenshot_path != "" do
     if local_static_path_exists?(screenshot_path) do

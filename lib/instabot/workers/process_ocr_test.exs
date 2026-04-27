@@ -1,5 +1,5 @@
 defmodule Instabot.Workers.ProcessOCRTest do
-  use Instabot.DataCase, async: true
+  use Instabot.DataCase, async: false
   use Oban.Testing, repo: Instabot.Repo
 
   import Instabot.AccountsFixtures
@@ -90,5 +90,47 @@ defmodule Instabot.Workers.ProcessOCRTest do
         assert "pending" == refreshed.ocr_status
       end
     end
+
+    test "downloads hosted screenshot to a temporary file for OCR", %{story: story} do
+      with_fake_tesseract("""
+      #!/bin/sh
+      printf '%s\\n' 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext'
+      printf '%s\\n' '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t95\tHosted'
+      printf '%s\\n' '5\t1\t1\t1\t1\t2\t0\t0\t10\t10\t94\tstory'
+      exit 0
+      """)
+
+      bypass = Bypass.open()
+
+      Bypass.expect_once(bypass, "GET", "/story.png", fn conn ->
+        Plug.Conn.resp(conn, 200, "image")
+      end)
+
+      screenshot_url = "http://localhost:#{bypass.port}/story.png"
+      {:ok, story} = Instagram.update_story_ocr(story, %{screenshot_path: nil, screenshot_url: screenshot_url})
+
+      assert :ok == ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
+
+      refreshed = Instagram.get_story!(story.id)
+      assert "completed" == refreshed.ocr_status
+      assert "Hosted story" == refreshed.ocr_text
+    end
+  end
+
+  defp with_fake_tesseract(contents) do
+    previous_path = System.get_env("PATH", "")
+    directory = Path.join(System.tmp_dir!(), "instabot_process_ocr_#{System.unique_integer([:positive])}")
+    executable = Path.join(directory, "tesseract")
+
+    File.mkdir_p!(directory)
+    File.write!(executable, contents)
+    File.chmod!(executable, 0o755)
+
+    System.put_env("PATH", "#{directory}:#{previous_path}")
+
+    on_exit(fn ->
+      System.put_env("PATH", previous_path)
+      File.rm_rf(directory)
+    end)
   end
 end

@@ -19,7 +19,9 @@ defmodule Instabot.OCRTest do
     test "extracts text through the tesseract executable" do
       with_fake_tesseract("""
       #!/bin/sh
-      echo "Story headline"
+      printf '%s\\n' 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext'
+      printf '%s\\n' '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t95\tStory'
+      printf '%s\\n' '5\t1\t1\t1\t1\t2\t0\t0\t10\t10\t90\theadline'
       exit 0
       """)
 
@@ -33,7 +35,9 @@ defmodule Instabot.OCRTest do
       with_fake_tesseract("""
       #!/bin/sh
       echo "Estimating resolution as 242" >&2
-      echo "OPEN HOURS"
+      printf '%s\\n' 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext'
+      printf '%s\\n' '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t95\tOPEN'
+      printf '%s\\n' '5\t1\t1\t1\t1\t2\t0\t0\t10\t10\t94\tHOURS'
       exit 0
       """)
 
@@ -41,6 +45,25 @@ defmodule Instabot.OCRTest do
       File.write!(image_path, "image")
 
       assert {:ok, "OPEN HOURS"} == OCR.extract_text(image_path)
+    end
+
+    test "filters low confidence visual noise while preserving emails" do
+      with_fake_tesseract("""
+      #!/bin/sh
+      printf '%s\\n' 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext'
+      printf '%s\\n' '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t30\tInstagnam'
+      printf '%s\\n' '5\t1\t1\t1\t2\t1\t0\t0\t10\t10\t92\tLooking'
+      printf '%s\\n' '5\t1\t1\t1\t2\t2\t0\t0\t10\t10\t92\tfor'
+      printf '%s\\n' '5\t1\t1\t1\t2\t3\t0\t0\t10\t10\t91\tcreatives,'
+      printf '%s\\n' '5\t1\t1\t1\t3\t1\t0\t0\t10\t10\t43\tthe13thclub.info@gmail.com'
+      printf '%s\\n' '5\t1\t1\t1\t4\t1\t0\t0\t10\t10\t19\t(i'
+      exit 0
+      """)
+
+      image_path = temp_image_path()
+      File.write!(image_path, "image")
+
+      assert {:ok, "Looking for creatives,\nthe13thclub.info@gmail.com"} == OCR.extract_text(image_path)
     end
 
     test "returns tesseract failures with status and output" do

@@ -45,6 +45,34 @@ defmodule Instabot.Notifications.DigestEmailTest do
     refute email.html_body =~ "https://example.com/fallback.jpg"
   end
 
+  test "prefers Cloudinary post media previews in the html digest", context do
+    post =
+      context.profile
+      |> post_fixture(%{
+        media_urls: ["https://example.com/fallback.jpg"],
+        caption: "Post with a hosted preview"
+      })
+      |> Repo.preload(:tracked_profile)
+
+    {:ok, _image} =
+      Instagram.create_post_image(post.id, %{
+        original_url: "https://example.com/original.jpg",
+        local_path: "priv/static/uploads/posts/image_0.jpg",
+        cloudinary_secure_url: "https://res.cloudinary.com/demo/image/upload/v1/posts/image_0.jpg",
+        position: 0,
+        content_type: "image/jpeg",
+        file_size: 123
+      })
+
+    post = Repo.preload(post, [:post_images], force: true)
+
+    email = build_email(context, %{posts: [post], stories: []})
+
+    assert email.html_body =~ ~s(src="https://res.cloudinary.com/demo/image/upload/v1/posts/image_0.jpg")
+    refute email.html_body =~ "http://localhost:4000/uploads/posts/image_0.jpg"
+    refute email.html_body =~ "https://example.com/fallback.jpg"
+  end
+
   test "renders story screenshots in the html digest", context do
     story =
       context.profile
@@ -58,6 +86,23 @@ defmodule Instabot.Notifications.DigestEmailTest do
 
     assert email.html_body =~ ~s(src="http://localhost:4000/screenshots/story.png")
     assert email.html_body =~ ~s(alt="Instagram story screenshot")
+    refute email.html_body =~ "https://example.com/story.jpg"
+  end
+
+  test "prefers Cloudinary story screenshots in the html digest", context do
+    story =
+      context.profile
+      |> story_fixture(%{
+        screenshot_path: "priv/static/screenshots/story.png",
+        screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/story.png",
+        media_url: "https://example.com/story.jpg"
+      })
+      |> Repo.preload(:tracked_profile)
+
+    email = build_email(context, %{posts: [], stories: [story]})
+
+    assert email.html_body =~ ~s(src="https://res.cloudinary.com/demo/image/upload/v1/stories/story.png")
+    refute email.html_body =~ "http://localhost:4000/screenshots/story.png"
     refute email.html_body =~ "https://example.com/story.jpg"
   end
 

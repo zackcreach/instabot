@@ -5,6 +5,7 @@ defmodule InstabotWeb.FeedLiveTest do
   import Instabot.InstagramFixtures
   import Phoenix.LiveViewTest
 
+  alias Instabot.Instagram
   alias Instabot.Instagram.Events
 
   setup :register_and_log_in_user
@@ -224,6 +225,24 @@ defmodule InstabotWeb.FeedLiveTest do
       assert html =~ "mountain sunset"
       refute html =~ "InstabotWeb.FeedLive.Lightbox"
       assert has_element?(view, "#post-modal-image-link[href='https://example.com/a.jpg'][target='_blank']")
+    end
+
+    test "modal prefers Cloudinary post image URLs", %{conn: conn, post: post} do
+      {:ok, _image} =
+        Instagram.create_post_image(post.id, %{
+          original_url: "https://example.com/a.jpg",
+          cloudinary_secure_url: "https://res.cloudinary.com/demo/image/upload/v1/posts/image_0.jpg",
+          position: 0,
+          content_type: "image/jpeg",
+          file_size: 123
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/feed/posts/#{post.id}")
+
+      assert has_element?(
+               view,
+               "#post-modal-image-link[href='https://res.cloudinary.com/demo/image/upload/v1/posts/image_0.jpg'][target='_blank']"
+             )
     end
 
     test "renders modal caption without preserved template indentation", %{conn: conn, post: post} do

@@ -16,6 +16,8 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
+alias Instabot.Media.Cloudinary
+
 if System.get_env("PHX_SERVER") do
   config :instabot, InstabotWeb.Endpoint, server: true
 end
@@ -51,6 +53,20 @@ case System.get_env("INSTABOT_UPLOADS_DIR") do
 end
 
 if config_env() == :prod do
+  cloudinary_cloud_name =
+    System.get_env("CLOUDINARY_CLOUD_NAME") ||
+      raise "environment variable CLOUDINARY_CLOUD_NAME is missing."
+
+  cloudinary_api_key =
+    System.get_env("CLOUDINARY_API_KEY") ||
+      raise "environment variable CLOUDINARY_API_KEY is missing."
+
+  cloudinary_api_secret =
+    System.get_env("CLOUDINARY_API_SECRET") ||
+      raise "environment variable CLOUDINARY_API_SECRET is missing."
+
+  cloudinary_folder = System.get_env("CLOUDINARY_FOLDER", "instabot/#{config_env()}")
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """
@@ -91,10 +107,18 @@ if config_env() == :prod do
 
   from_email = System.get_env("MAILGUN_FROM_EMAIL", "noreply@#{mailgun_domain}")
 
+  config :instabot, Cloudinary,
+    cloud_name: cloudinary_cloud_name,
+    api_key: cloudinary_api_key,
+    api_secret: cloudinary_api_secret,
+    folder: cloudinary_folder
+
   config :instabot, Instabot.Mailer,
     adapter: Swoosh.Adapters.Mailgun,
     api_key: mailgun_api_key,
     domain: mailgun_domain
+
+  config :instabot, Instabot.Media, storage_adapter: Cloudinary
 
   config :instabot, Instabot.Repo,
     # ssl: true,

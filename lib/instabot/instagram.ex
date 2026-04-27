@@ -198,14 +198,20 @@ defmodule Instabot.Instagram do
   def get_stories_pending_ocr(tracked_profile_id) do
     Story
     |> where(tracked_profile_id: ^tracked_profile_id)
-    |> where([s], s.ocr_status in ["pending", "failed"] and not is_nil(s.screenshot_path))
+    |> where(
+      [s],
+      s.ocr_status in ["pending", "failed"] and (not is_nil(s.screenshot_path) or not is_nil(s.screenshot_url))
+    )
     |> Repo.all()
   end
 
   def count_stories_waiting_for_ocr(tracked_profile_id) do
     Story
     |> where(tracked_profile_id: ^tracked_profile_id)
-    |> where([s], s.ocr_status in ["pending", "processing"] and not is_nil(s.screenshot_path))
+    |> where(
+      [s],
+      s.ocr_status in ["pending", "processing"] and (not is_nil(s.screenshot_path) or not is_nil(s.screenshot_url))
+    )
     |> Repo.aggregate(:count)
   end
 
@@ -272,18 +278,24 @@ defmodule Instabot.Instagram do
   end
 
   defp reset_story_ocr_attrs(attrs, %Story{} = story) do
-    case Keyword.get(attrs, :screenshot_path) do
-      screenshot_path when is_binary(screenshot_path) and screenshot_path != story.screenshot_path ->
-        attrs
-        |> Keyword.put(:ocr_status, "pending")
-        |> Keyword.put(:ocr_text, nil)
-
-      _ ->
-        attrs
+    if refreshed_screenshot?(attrs, story) do
+      attrs
+      |> Keyword.put(:ocr_status, "pending")
+      |> Keyword.put(:ocr_text, nil)
+    else
+      attrs
     end
   end
 
   defp reset_story_ocr_attrs(attrs, _record), do: attrs
+
+  defp refreshed_screenshot?(attrs, story) do
+    refreshed_value?(Keyword.get(attrs, :screenshot_path), story.screenshot_path) or
+      refreshed_value?(Keyword.get(attrs, :screenshot_url), story.screenshot_url)
+  end
+
+  defp refreshed_value?(value, existing_value) when is_binary(value), do: value != "" and value != existing_value
+  defp refreshed_value?(_value, _existing_value), do: false
 
   defp normalize_attrs(attrs) do
     Enum.reduce(attrs, %{}, fn {key, value}, acc ->

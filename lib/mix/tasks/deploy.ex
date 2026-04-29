@@ -21,7 +21,9 @@ defmodule Mix.Tasks.Deploy do
     local_commit = "main" |> rev_parse() |> String.trim()
     remote_commit = "origin/main" |> rev_parse() |> String.trim()
 
-    deploy_or_exit(force?, local_commit, remote_commit)
+    current_image? = docker_image_exists?("instabot:#{short_commit(remote_commit)}")
+
+    deploy_or_exit(force?, local_commit, remote_commit, current_image?)
 
     log("Building Docker image")
     shell!("./scripts/docker-build.sh")
@@ -33,20 +35,31 @@ defmodule Mix.Tasks.Deploy do
     log("Deployed commit: #{short_commit(remote_commit)}")
   end
 
-  defp deploy_or_exit(false, commit, commit) do
+  defp deploy_or_exit(false, commit, commit, true) do
     log("Already up-to-date: #{short_commit(commit)}")
     log("Use --force to deploy anyway")
     System.halt(0)
   end
 
-  defp deploy_or_exit(true, commit, commit) do
+  defp deploy_or_exit(false, commit, commit, false) do
+    log("Current image missing, deploying current commit: #{short_commit(commit)}")
+  end
+
+  defp deploy_or_exit(true, commit, commit, _current_image?) do
     log("Force deploying current commit: #{short_commit(commit)}")
   end
 
-  defp deploy_or_exit(_force?, local_commit, remote_commit) do
+  defp deploy_or_exit(_force?, local_commit, remote_commit, _current_image?) do
     log("New commits detected: #{short_commit(local_commit)} -> #{short_commit(remote_commit)}")
     log("Pulling latest changes")
     git!(["pull", "origin", "main"])
+  end
+
+  defp docker_image_exists?(image) do
+    case System.cmd("docker", ["image", "inspect", image], stderr_to_stdout: true) do
+      {_, 0} -> true
+      {_, _status} -> false
+    end
   end
 
   defp configure_git_credentials do

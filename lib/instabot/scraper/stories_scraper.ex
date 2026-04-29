@@ -267,15 +267,7 @@ defmodule Instabot.Scraper.StoriesScraper do
 
     case Media.upload_image(Base.decode64!(base64), subdirectory, filename, content_type: "image/png") do
       {:ok, result} ->
-        %{
-          screenshot_path: result[:local_path],
-          screenshot_url: result[:cloudinary_secure_url],
-          screenshot_cloudinary_public_id: result[:cloudinary_public_id],
-          screenshot_cloudinary_version: result[:cloudinary_version],
-          screenshot_cloudinary_format: result[:cloudinary_format],
-          screenshot_width: result[:width],
-          screenshot_height: result[:height]
-        }
+        upload_screenshot_attrs(result, story_id)
 
       {:error, reason} ->
         Logger.warning("Failed to upload story screenshot #{story_id}: #{inspect(reason)}")
@@ -284,4 +276,28 @@ defmodule Instabot.Scraper.StoriesScraper do
   end
 
   defp upload_screenshot(_profile, _story), do: %{}
+
+  defp upload_screenshot_attrs(result, story_id) do
+    if valid_screenshot_upload?(result) do
+      %{
+        screenshot_path: result[:local_path],
+        screenshot_url: result[:cloudinary_secure_url],
+        screenshot_cloudinary_public_id: result[:cloudinary_public_id],
+        screenshot_cloudinary_version: result[:cloudinary_version],
+        screenshot_cloudinary_format: result[:cloudinary_format],
+        screenshot_width: result[:width],
+        screenshot_height: result[:height]
+      }
+    else
+      Logger.warning("Ignoring story screenshot #{story_id}: Cloudinary upload did not return a secure URL")
+      %{}
+    end
+  end
+
+  defp valid_screenshot_upload?(result) do
+    not Media.cloudinary_storage?() or present?(result[:cloudinary_secure_url])
+  end
+
+  defp present?(value) when is_binary(value), do: value != ""
+  defp present?(_value), do: false
 end

@@ -9,6 +9,7 @@ defmodule InstabotWeb.StoriesLive do
   alias InstabotWeb.DateTimeFormatter
 
   @page_size Feed.default_limit()
+  @blocked_preview_hosts ["cdninstagram.com", "fbcdn.net"]
 
   @impl true
   def render(assigns) do
@@ -314,55 +315,8 @@ defmodule InstabotWeb.StoriesLive do
   defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Media.to_url(url)
   defp profile_avatar_url(_profile), do: nil
 
-  defp story_preview_url(%{screenshot_url: screenshot_url}) when is_binary(screenshot_url) and screenshot_url != "" do
-    screenshot_url
-  end
-
-  defp story_preview_url(%{screenshot_path: screenshot_path} = story)
-       when is_binary(screenshot_path) and screenshot_path != "" do
-    if local_static_path_exists?(screenshot_path) do
-      Media.to_url(screenshot_path)
-    else
-      story_media_url(story)
-    end
-  end
-
-  defp story_preview_url(story), do: story_media_url(story)
-
-  defp story_media_url(%{media_url: media_url}) when is_binary(media_url) and media_url != "" do
-    if browser_loadable_media_url?(media_url), do: media_url
-  end
-
-  defp story_media_url(_story), do: nil
-
-  defp local_static_path_exists?(path) do
-    cond do
-      String.contains?(path, "priv/static/") ->
-        [_, relative_path] = String.split(path, "priv/static/", parts: 2)
-        File.exists?(path) or File.exists?(Path.join("priv/static", relative_path))
-
-      String.starts_with?(path, "http") ->
-        false
-
-      String.starts_with?(path, "/") ->
-        path
-        |> String.trim_leading("/")
-        |> then(&Path.join("priv/static", &1))
-        |> File.exists?()
-
-      true ->
-        File.exists?(path) or File.exists?(Path.join("priv/static", path))
-    end
-  end
-
-  defp browser_loadable_media_url?(url) do
-    case URI.parse(url) do
-      %{host: host} when is_binary(host) ->
-        not String.ends_with?(host, "cdninstagram.com") and not String.ends_with?(host, "fbcdn.net")
-
-      _ ->
-        true
-    end
+  defp story_preview_url(story) do
+    Media.story_preview_url(story, require_local_exists: true, blocked_hosts: @blocked_preview_hosts)
   end
 
   defp format_datetime(datetime), do: DateTimeFormatter.datetime(datetime)

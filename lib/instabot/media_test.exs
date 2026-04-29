@@ -117,4 +117,70 @@ defmodule Instabot.MediaTest do
       assert File.exists?(local_path)
     end
   end
+
+  describe "post_image_urls/1" do
+    test "prefers sorted stored post images over scraped media URLs" do
+      post = %{
+        media_urls: ["https://example.com/fallback.jpg"],
+        post_images: [
+          %{
+            position: 1,
+            local_path: "priv/static/uploads/posts/local.jpg",
+            cloudinary_secure_url: nil
+          },
+          %{
+            position: 0,
+            local_path: "priv/static/uploads/posts/old.jpg",
+            cloudinary_secure_url: "https://res.cloudinary.com/demo/image/upload/v1/posts/hosted.jpg"
+          }
+        ]
+      }
+
+      assert [
+               "https://res.cloudinary.com/demo/image/upload/v1/posts/hosted.jpg",
+               "/uploads/posts/local.jpg"
+             ] == Media.post_image_urls(post)
+    end
+
+    test "falls back to scraped media URLs when stored post images have no usable URL" do
+      post = %{
+        media_urls: ["https://example.com/fallback.jpg"],
+        post_images: [%{position: 0, local_path: nil, cloudinary_secure_url: nil}]
+      }
+
+      assert ["https://example.com/fallback.jpg"] == Media.post_image_urls(post)
+    end
+  end
+
+  describe "story_preview_url/2" do
+    test "prefers Cloudinary story screenshots over local screenshots and scraped media URLs" do
+      story = %{
+        screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/story.jpg",
+        screenshot_path: "priv/static/screenshots/story.png",
+        media_url: "https://example.com/story.jpg"
+      }
+
+      assert "https://res.cloudinary.com/demo/image/upload/v1/stories/story.jpg" == Media.story_preview_url(story)
+    end
+
+    test "falls back to a browser-loadable scraped media URL when required local screenshot is missing" do
+      story = %{
+        screenshot_url: nil,
+        screenshot_path: "priv/static/screenshots/missing-story.png",
+        media_url: "https://example.com/story.jpg"
+      }
+
+      assert "https://example.com/story.jpg" == Media.story_preview_url(story, require_local_exists: true)
+    end
+
+    test "blocks configured scraped media hosts" do
+      story = %{
+        screenshot_url: nil,
+        screenshot_path: "priv/static/screenshots/missing-story.png",
+        media_url: "https://scontent-atl3-1.cdninstagram.com/story.jpg"
+      }
+
+      assert is_nil(Media.story_preview_url(story, require_local_exists: true, blocked_hosts: ["cdninstagram.com"]))
+    end
+  end
 end

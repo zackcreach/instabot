@@ -5,6 +5,7 @@ defmodule InstabotWeb.FeedLive do
   alias Instabot.Instagram
   alias Instabot.Instagram.Events
   alias Instabot.Instagram.Feed
+  alias Instabot.Media
   alias InstabotWeb.DateTimeFormatter
 
   @html_entities [
@@ -385,35 +386,13 @@ defmodule InstabotWeb.FeedLive do
     |> assign(:total_posts, Feed.count_posts(user_id, opts))
   end
 
-  defp thumbnail_for(%{post_images: images}) when is_list(images) and images != [] do
-    images
-    |> Enum.sort_by(& &1.position)
-    |> Enum.find_value(&post_image_url/1)
-  end
+  defp thumbnail_for(post), do: Media.post_thumbnail_url(post)
 
-  defp thumbnail_for(%{media_urls: [url | _]}) when is_binary(url), do: url
+  defp image_count(post), do: Media.post_image_count(post)
 
-  defp thumbnail_for(_post), do: nil
+  defp current_image(post, index), do: Media.post_image_url_at(post, index)
 
-  defp image_count(%{post_images: images}) when is_list(images) and images != [], do: length(images)
-  defp image_count(%{media_urls: urls}) when is_list(urls), do: length(urls)
-  defp image_count(_post), do: 0
-
-  defp current_image(%{post_images: images}, index) when is_list(images) and images != [] do
-    images
-    |> Enum.sort_by(& &1.position)
-    |> Enum.at(index)
-    |> post_image_url()
-  end
-
-  defp current_image(%{media_urls: urls}, index) when is_list(urls), do: Enum.at(urls, index)
-  defp current_image(_post, _index), do: nil
-
-  defp post_image_url(%{cloudinary_secure_url: url}) when is_binary(url) and url != "", do: url
-  defp post_image_url(%{local_path: path}) when is_binary(path) and path != "", do: Instabot.Media.to_url(path)
-  defp post_image_url(_post_image), do: nil
-
-  defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Instabot.Media.to_url(url)
+  defp profile_avatar_url(%{profile_pic_url: url}) when is_binary(url) and url != "", do: Media.to_url(url)
   defp profile_avatar_url(_profile), do: nil
 
   defp post_display_datetime(%{posted_at: %DateTime{} = posted_at}), do: posted_at

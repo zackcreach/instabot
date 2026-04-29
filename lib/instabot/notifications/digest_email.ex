@@ -181,7 +181,12 @@ defmodule Instabot.Notifications.DigestEmail do
 
     items =
       Enum.map(posts, fn post ->
-        media_urls = post_media_urls(post)
+        media_urls =
+          post
+          |> Media.post_image_urls()
+          |> Enum.map(&absolute_media_url/1)
+          |> Enum.reject(&is_nil/1)
+
         image_grid = html_media_grid(media_urls, preference)
 
         caption_line =
@@ -229,7 +234,11 @@ defmodule Instabot.Notifications.DigestEmail do
 
     items =
       Enum.map(stories, fn story ->
-        preview_url = story_preview_url(story)
+        preview_url =
+          story
+          |> Media.story_preview_url()
+          |> absolute_media_url()
+
         preview = html_story_preview(preview_url, preference)
 
         ocr_line = html_story_ocr_line(story, preference)
@@ -331,39 +340,6 @@ defmodule Instabot.Notifications.DigestEmail do
     </div>
     """
   end
-
-  defp post_media_urls(%{post_images: post_images}) when is_list(post_images) and post_images != [] do
-    post_images
-    |> Enum.sort_by(& &1.position)
-    |> Enum.map(&post_image_url/1)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp post_media_urls(%{media_urls: media_urls}) when is_list(media_urls) do
-    media_urls
-    |> Enum.map(&absolute_media_url/1)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp post_media_urls(_post), do: []
-
-  defp story_preview_url(%{screenshot_url: screenshot_url}) when is_binary(screenshot_url) and screenshot_url != "" do
-    absolute_media_url(screenshot_url)
-  end
-
-  defp story_preview_url(%{screenshot_path: screenshot_path}) when is_binary(screenshot_path) and screenshot_path != "" do
-    absolute_media_url(screenshot_path)
-  end
-
-  defp story_preview_url(%{media_url: media_url}) when is_binary(media_url) and media_url != "" do
-    absolute_media_url(media_url)
-  end
-
-  defp story_preview_url(_story), do: nil
-
-  defp post_image_url(%{cloudinary_secure_url: url}) when is_binary(url) and url != "", do: absolute_media_url(url)
-  defp post_image_url(%{local_path: path}) when is_binary(path) and path != "", do: absolute_media_url(path)
-  defp post_image_url(_post_image), do: nil
 
   defp absolute_media_url(nil), do: nil
   defp absolute_media_url(""), do: nil

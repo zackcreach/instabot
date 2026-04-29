@@ -18,6 +18,10 @@ defmodule Instabot.Instagram.Story do
     field :screenshot_height, :integer
     field :ocr_text, :string
     field :ocr_status, :string, default: "pending"
+    field :story_chrome_detected, :boolean
+    field :likely_ad, :boolean, default: false
+    field :ad_score, :integer, default: 0
+    field :ad_reasons, {:array, :string}, default: []
     field :story_type, :string
     field :media_url, :string
     field :posted_at, :utc_datetime
@@ -41,6 +45,10 @@ defmodule Instabot.Instagram.Story do
       :screenshot_height,
       :ocr_text,
       :ocr_status,
+      :story_chrome_detected,
+      :likely_ad,
+      :ad_score,
+      :ad_reasons,
       :story_type,
       :media_url,
       :posted_at,

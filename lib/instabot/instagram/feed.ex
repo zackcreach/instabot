@@ -120,11 +120,18 @@ defmodule Instabot.Instagram.Feed do
     |> join(:inner, [s], tp in TrackedProfile, on: s.tracked_profile_id == tp.id)
     |> where([_s, tp], tp.user_id == ^user_id)
     |> filter_stories_by_profile(opts[:profile_id])
+    |> filter_stories_by_ads(opts[:include_ads])
   end
 
   defp filter_stories_by_profile(query, profile_id) when profile_id in [nil, ""], do: query
 
   defp filter_stories_by_profile(query, profile_id) do
     where(query, [s, _tp], s.tracked_profile_id == ^profile_id)
+  end
+
+  defp filter_stories_by_ads(query, true), do: query
+
+  defp filter_stories_by_ads(query, _include_ads) do
+    where(query, [s, _tp], s.likely_ad == false)
   end
 end

@@ -133,7 +133,7 @@ defmodule Instabot.Scraper.StoriesScraper do
          {:ok, page_id} <- Session.setup_session_from_data(browser, session_data),
          :ok <- navigate_to_stories(browser, page_id, username),
          :ok <- dismiss_story_gate(browser, page_id) do
-      collect_story_frames(browser, page_id, max_frames)
+      collect_story_frames(browser, page_id, username, max_frames)
     end
   end
 
@@ -151,11 +151,11 @@ defmodule Instabot.Scraper.StoriesScraper do
     end
   end
 
-  defp collect_story_frames(browser, page_id, max_frames) do
+  defp collect_story_frames(browser, page_id, username, max_frames) do
     with {:ok, js_data} <- Browser.evaluate(browser, page_id, @story_data_js),
          {:ok, json_responses} <- Browser.get_json_responses(browser, page_id) do
       story_metadata = story_metadata(js_data, json_responses)
-      stories = capture_frames(browser, page_id, story_metadata, max_frames)
+      stories = capture_frames(browser, page_id, username, story_metadata, max_frames)
       {:ok, stories}
     end
   end
@@ -167,7 +167,7 @@ defmodule Instabot.Scraper.StoriesScraper do
     end
   end
 
-  defp capture_frames(browser, page_id, metadata, max_frames) do
+  defp capture_frames(browser, page_id, username, metadata, max_frames) do
     metadata
     |> Enum.take(max_frames)
     |> Enum.with_index()
@@ -178,7 +178,13 @@ defmodule Instabot.Scraper.StoriesScraper do
            :ok <- dismiss_story_gate(browser, page_id),
            true <- story_viewer_ready?(browser, page_id),
            {:ok, %{"base64" => base64}} <- Browser.screenshot(browser, page_id) do
-        story = Map.put(story_meta, :screenshot_base64, base64)
+        capture_signals = capture_signals(browser, page_id, username)
+
+        story =
+          story_meta
+          |> Map.merge(capture_signal_attrs(capture_signals))
+          |> Map.put(:screenshot_base64, base64)
+
         {:cont, [story | acc]}
       else
         :done ->
@@ -231,6 +237,50 @@ defmodule Instabot.Scraper.StoriesScraper do
     end
   end
 
+  defp story_capture_signals_js(username) do
+    encoded_username = Jason.encode!(username)
+
+    """
+    (() => {
+      const username = #{encoded_username}.toLowerCase();
+      const topElements = Array.from(document.querySelectorAll("a, span, div, img, svg, button")).filter(element => {
+        const rect = element.getBoundingClientRect();
+        return rect.top >= 0 && rect.top < 120 && rect.left >= 0 && rect.left < 360 && rect.width > 0 && rect.height > 0;
+      });
+      const topText = topElements.map(element => element.innerText || element.textContent || element.alt || element.getAttribute("aria-label") || "").join(" ").toLowerCase();
+      const avatarLike = topElements.some(element => {
+        const rect = element.getBoundingClientRect();
+        const styles = window.getComputedStyle(element);
+        const radius = Number.parseFloat(styles.borderRadius || "0");
+        return element.tagName === "IMG" && rect.left < 120 && rect.top < 100 && rect.width >= 20 && rect.width <= 72 && rect.height >= 20 && rect.height <= 72 && radius >= Math.min(rect.width, rect.height) / 3;
+      });
+      const hasUsername = username.length > 0 && topText.includes(username);
+      const hasSponsoredText = /sponsored|paid partnership|shop now|learn more/i.test(document.body ? document.body.innerText || "" : "");
+
+      return {
+        story_chrome_detected: hasUsername || avatarLike,
+        ad_text: hasSponsoredText ? (document.body.innerText || "") : ""
+      };
+    })()
+    """
+  end
+
+  defp capture_signals(browser, page_id, username) do
+    case Browser.evaluate(browser, page_id, story_capture_signals_js(username)) do
+      {:ok, signals} -> signals
+      {:error, _reason} -> %{}
+    end
+  end
+
+  defp capture_signal_attrs(%{"story_chrome_detected" => value} = signals) do
+    %{
+      story_chrome_detected: value,
+      ad_text: signals["ad_text"]
+    }
+  end
+
+  defp capture_signal_attrs(_signals), do: %{}
+
   defp persist_stories(profile, stories) do
     Enum.count(stories, fn story ->
       screenshot_attrs = upload_screenshot(profile, story)
@@ -241,6 +291,8 @@ defmodule Instabot.Scraper.StoriesScraper do
             instagram_story_id: story.instagram_story_id,
             story_type: story.story_type,
             media_url: story.media_url,
+            story_chrome_detected: Map.get(story, :story_chrome_detected),
+            ad_text: Map.get(story, :ad_text),
             posted_at: story.posted_at,
             expires_at: story.expires_at
           },

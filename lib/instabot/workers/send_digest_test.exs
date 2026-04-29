@@ -63,6 +63,22 @@ defmodule Instabot.Workers.SendDigestTest do
       assert %{digest_type: "weekly", posts_count: 0, stories_count: 1} = digest
     end
 
+    test "skips digest when only likely ad stories exist", %{user: user, profile: profile} do
+      {:ok, _story} =
+        Instagram.create_story(profile.id, %{
+          instagram_story_id: "ad_digest_story_#{System.unique_integer([:positive])}",
+          story_type: "video",
+          story_chrome_detected: false
+        })
+
+      assert :ok ==
+               SendDigest.perform(%Oban.Job{
+                 args: %{"user_id" => user.id, "digest_type" => "daily"}
+               })
+
+      assert nil == Notifications.last_digest_for_user(user.id, "daily")
+    end
+
     test "runs pending story OCR before sending digest", %{user: user, profile: profile} do
       {:ok, _story} =
         Instagram.create_story(profile.id, %{

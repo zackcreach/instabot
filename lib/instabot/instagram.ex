@@ -12,6 +12,7 @@ defmodule Instabot.Instagram do
   alias Instabot.Instagram.Story
   alias Instabot.Instagram.TrackedProfile
   alias Instabot.Repo
+  alias Instabot.Stories.AdClassifier
 
   def get_connection_for_user(user_id) do
     Repo.get_by(InstagramConnection, user_id: user_id)
@@ -161,6 +162,8 @@ defmodule Instabot.Instagram do
   end
 
   def create_story(tracked_profile_id, attrs) do
+    attrs = classify_story_attrs(attrs)
+
     %Story{tracked_profile_id: tracked_profile_id}
     |> Story.changeset(attrs)
     |> Repo.insert()
@@ -170,12 +173,12 @@ defmodule Instabot.Instagram do
     case get_story_by_instagram_id(tracked_profile_id, attrs[:instagram_story_id] || attrs["instagram_story_id"]) do
       nil ->
         tracked_profile_id
-        |> create_story(attrs)
+        |> create_story(classify_story_attrs(attrs))
         |> tag_story_result(:inserted)
 
       %Story{} = story ->
         story
-        |> Story.changeset(scrape_update_attrs(story, attrs))
+        |> Story.changeset(scrape_update_attrs(story, classify_story_attrs(attrs)))
         |> update_scraped_story()
     end
   end
@@ -190,6 +193,8 @@ defmodule Instabot.Instagram do
   def get_story!(id), do: Repo.get!(Story, id)
 
   def update_story_ocr(%Story{} = story, attrs) do
+    attrs = Map.merge(attrs, AdClassifier.classify(Map.merge(Map.from_struct(story), attrs)))
+
     story
     |> Story.changeset(attrs)
     |> Repo.update()
@@ -229,6 +234,7 @@ defmodule Instabot.Instagram do
     |> join(:inner, [s], tp in TrackedProfile, on: s.tracked_profile_id == tp.id)
     |> where([_s, tp], tp.user_id == ^user_id)
     |> where([s, _tp], s.inserted_at >= ^since)
+    |> where([s, _tp], s.likely_ad == false)
     |> preload(:tracked_profile)
     |> Repo.all()
   end
@@ -265,6 +271,14 @@ defmodule Instabot.Instagram do
 
   defp get_story_by_instagram_id(tracked_profile_id, instagram_story_id) do
     Repo.get_by(Story, tracked_profile_id: tracked_profile_id, instagram_story_id: instagram_story_id)
+  end
+
+  defp classify_story_attrs(attrs) do
+    if Map.has_key?(attrs, :likely_ad) or Map.has_key?(attrs, "likely_ad") do
+      attrs
+    else
+      Map.merge(attrs, AdClassifier.classify(attrs))
+    end
   end
 
   defp scrape_update_attrs(record, attrs) do

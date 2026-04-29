@@ -170,6 +170,38 @@ defmodule Instabot.InstagramTest do
       assert updated_story.id == pending_story.id
     end
 
+    test "classifies scraped stories without story chrome as likely ads" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+
+      assert {:ok, story, :inserted} =
+               Instagram.upsert_story_from_scrape(profile.id, %{
+                 instagram_story_id: "ad_story",
+                 story_type: "video",
+                 story_chrome_detected: false
+               })
+
+      assert true == story.likely_ad
+      assert 5 == story.ad_score
+      assert ["missing_story_header"] == story.ad_reasons
+    end
+
+    test "updates ad classification when OCR text is saved" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+      story = story_fixture(profile, %{story_chrome_detected: true, likely_ad: false, ad_score: 0, ad_reasons: []})
+
+      assert {:ok, updated_story} =
+               Instagram.update_story_ocr(story, %{
+                 ocr_status: "completed",
+                 ocr_text: "Sponsored"
+               })
+
+      assert true == updated_story.likely_ad
+      assert 6 == updated_story.ad_score
+      assert ["sponsored_text"] == updated_story.ad_reasons
+    end
+
     test "does not replace useful story details with blank scrape data" do
       user = user_fixture()
       profile = tracked_profile_fixture(user)

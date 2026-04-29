@@ -232,6 +232,25 @@ defmodule Instabot.Instagram.FeedTest do
       assert story_b.id == returned.id
     end
 
+    test "excludes likely ad stories by default", %{user: user} do
+      profile = tracked_profile_fixture(user)
+
+      visible_story = story_fixture(profile)
+      _ad_story = story_fixture(profile, %{likely_ad: true, ad_score: 5, ad_reasons: ["missing_story_header"]})
+
+      assert [returned] = Feed.list_stories(user.id)
+      assert visible_story.id == returned.id
+    end
+
+    test "can include likely ad stories", %{user: user} do
+      profile = tracked_profile_fixture(user)
+
+      _visible_story = story_fixture(profile)
+      _ad_story = story_fixture(profile, %{likely_ad: true, ad_score: 5, ad_reasons: ["missing_story_header"]})
+
+      assert 2 == length(Feed.list_stories(user.id, include_ads: true))
+    end
+
     test "respects limit and offset", %{user: user} do
       profile = tracked_profile_fixture(user)
       for _ <- 1..5, do: story_fixture(profile)
@@ -247,6 +266,16 @@ defmodule Instabot.Instagram.FeedTest do
       for _ <- 1..4, do: story_fixture(profile)
 
       assert 4 == Feed.count_stories(user.id)
+    end
+
+    test "excludes likely ad stories from default count", %{user: user} do
+      profile = tracked_profile_fixture(user)
+
+      _visible_story = story_fixture(profile)
+      _ad_story = story_fixture(profile, %{likely_ad: true, ad_score: 5, ad_reasons: ["missing_story_header"]})
+
+      assert 1 == Feed.count_stories(user.id)
+      assert 2 == Feed.count_stories(user.id, include_ads: true)
     end
   end
 

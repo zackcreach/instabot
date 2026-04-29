@@ -12,18 +12,13 @@ defmodule Instabot.Workers.SendWeeklyDigests do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    today = Date.day_of_week(Date.utc_today())
-    preferences = Notifications.list_preferences_by_frequency("weekly")
+    today = Date.utc_today()
+    jobs = Notifications.due_profile_digest_jobs("weekly", today)
 
-    matching =
-      Enum.filter(preferences, fn pref ->
-        pref.weekly_send_day == today
-      end)
+    Logger.info("SendWeeklyDigests: #{length(jobs)} profiles due for weekly digest on day #{Date.day_of_week(today)}")
 
-    Logger.info("SendWeeklyDigests: #{length(matching)} users due for weekly digest on day #{today}")
-
-    Enum.each(matching, fn pref ->
-      %{user_id: pref.user_id, digest_type: "weekly"}
+    Enum.each(jobs, fn job ->
+      %{user_id: job.user_id, digest_type: "weekly", tracked_profile_id: job.tracked_profile_id}
       |> SendDigest.new()
       |> Oban.insert()
     end)

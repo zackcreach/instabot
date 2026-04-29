@@ -65,6 +65,39 @@ defmodule Instabot.Workers.SendImmediateNotificationTest do
       assert %{digest_type: "immediate", posts_count: 1, stories_count: 0} = digest
     end
 
+    test "profile-scoped notification excludes other profile content", %{user: user, profile: profile} do
+      other_profile = tracked_profile_fixture(user)
+      user_preference = Notifications.get_or_create_preference(user.id)
+      {:ok, _user_preference} = Notifications.update_preference(user_preference, %{frequency: "disabled"})
+      profile_preference = Notifications.get_or_create_profile_preference(user.id, profile.id)
+      {:ok, _profile_preference} = Notifications.update_profile_preference(profile_preference, %{frequency: "immediate"})
+
+      {:ok, _post} =
+        Instagram.create_post(profile.id, %{
+          instagram_post_id: "scoped_imm_post_#{System.unique_integer([:positive])}",
+          post_type: "image",
+          caption: "Scoped immediate notification test",
+          media_urls: []
+        })
+
+      {:ok, _other_post} =
+        Instagram.create_post(other_profile.id, %{
+          instagram_post_id: "other_scoped_imm_post_#{System.unique_integer([:positive])}",
+          post_type: "image",
+          caption: "Other profile content",
+          media_urls: []
+        })
+
+      assert :ok ==
+               SendImmediateNotification.perform(%Oban.Job{
+                 args: %{"user_id" => user.id, "tracked_profile_id" => profile.id}
+               })
+
+      digest = Notifications.last_digest_for_profile(user.id, "immediate", profile.id)
+      assert %{digest_type: "immediate", posts_count: 1, stories_count: 0} = digest
+      assert nil == Notifications.last_digest_for_profile(user.id, "immediate", other_profile.id)
+    end
+
     test "waits for OCR completion event while story OCR is pending", %{user: user, profile: profile} do
       pref = Notifications.get_or_create_preference(user.id)
       {:ok, _preference} = Notifications.update_preference(pref, %{frequency: "immediate"})

@@ -63,6 +63,33 @@ defmodule Instabot.Workers.SendDigestTest do
       assert %{digest_type: "weekly", posts_count: 0, stories_count: 1} = digest
     end
 
+    test "profile-scoped digest only includes that profile", %{user: user, profile: profile} do
+      other_profile = tracked_profile_fixture(user)
+
+      for tracked_profile <- [profile, other_profile] do
+        {:ok, _post} =
+          Instagram.create_post(tracked_profile.id, %{
+            instagram_post_id: "profile_digest_post_#{tracked_profile.id}",
+            post_type: "image",
+            caption: "Profile scoped digest",
+            media_urls: []
+          })
+      end
+
+      assert :ok ==
+               SendDigest.perform(%Oban.Job{
+                 args: %{
+                   "user_id" => user.id,
+                   "digest_type" => "daily",
+                   "tracked_profile_id" => profile.id
+                 }
+               })
+
+      digest = Notifications.last_digest_for_profile(user.id, "daily", profile.id)
+      assert %{digest_type: "daily", posts_count: 1, stories_count: 0} = digest
+      assert nil == Notifications.last_digest_for_profile(user.id, "daily", other_profile.id)
+    end
+
     test "skips digest when only likely ad stories exist", %{user: user, profile: profile} do
       {:ok, _story} =
         Instagram.create_story(profile.id, %{

@@ -3,6 +3,7 @@ defmodule Instabot.Workers.SendWeeklyDigestsTest do
   use Oban.Testing, repo: Instabot.Repo
 
   import Instabot.AccountsFixtures
+  import Instabot.InstagramFixtures
 
   alias Instabot.Notifications
   alias Instabot.Workers.SendDigest
@@ -11,6 +12,7 @@ defmodule Instabot.Workers.SendWeeklyDigestsTest do
   describe "perform/1" do
     test "enqueues SendDigest for users whose weekly_send_day matches today" do
       user = user_fixture()
+      profile = tracked_profile_fixture(user)
       today = Date.day_of_week(Date.utc_today())
       pref = Notifications.get_or_create_preference(user.id)
 
@@ -22,11 +24,15 @@ defmodule Instabot.Workers.SendWeeklyDigestsTest do
 
       assert :ok == SendWeeklyDigests.perform(%Oban.Job{})
 
-      assert_enqueued(worker: SendDigest, args: %{user_id: user.id, digest_type: "weekly"})
+      assert_enqueued(
+        worker: SendDigest,
+        args: %{user_id: user.id, digest_type: "weekly", tracked_profile_id: profile.id}
+      )
     end
 
     test "skips users whose weekly_send_day does not match today" do
       user = user_fixture()
+      profile = tracked_profile_fixture(user)
       today = Date.day_of_week(Date.utc_today())
       other_day = rem(today, 7) + 1
       pref = Notifications.get_or_create_preference(user.id)
@@ -39,7 +45,10 @@ defmodule Instabot.Workers.SendWeeklyDigestsTest do
 
       assert :ok == SendWeeklyDigests.perform(%Oban.Job{})
 
-      refute_enqueued(worker: SendDigest, args: %{user_id: user.id, digest_type: "weekly"})
+      refute_enqueued(
+        worker: SendDigest,
+        args: %{user_id: user.id, digest_type: "weekly", tracked_profile_id: profile.id}
+      )
     end
   end
 end

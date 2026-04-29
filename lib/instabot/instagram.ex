@@ -64,6 +64,14 @@ defmodule Instabot.Instagram do
     |> Repo.all()
   end
 
+  def list_tracked_profiles_with_notification_preferences(user_id) do
+    TrackedProfile
+    |> where(user_id: ^user_id)
+    |> order_by(asc: :instagram_username)
+    |> preload(:profile_notification_preference)
+    |> Repo.all()
+  end
+
   def get_tracked_profile!(id), do: Repo.get!(TrackedProfile, id)
 
   def get_tracked_profile_for_user!(user_id, id) do
@@ -221,20 +229,30 @@ defmodule Instabot.Instagram do
   end
 
   def get_new_posts_since(user_id, since) do
+    get_new_posts_since(user_id, since, [])
+  end
+
+  def get_new_posts_since(user_id, since, tracked_profile_ids) do
     Post
     |> join(:inner, [p], tp in TrackedProfile, on: p.tracked_profile_id == tp.id)
     |> where([_p, tp], tp.user_id == ^user_id)
     |> where([p, _tp], p.inserted_at >= ^since)
+    |> where_tracked_profile_ids(tracked_profile_ids)
     |> preload([:post_images, :tracked_profile])
     |> Repo.all()
   end
 
   def get_new_stories_since(user_id, since) do
+    get_new_stories_since(user_id, since, [])
+  end
+
+  def get_new_stories_since(user_id, since, tracked_profile_ids) do
     Story
     |> join(:inner, [s], tp in TrackedProfile, on: s.tracked_profile_id == tp.id)
     |> where([_s, tp], tp.user_id == ^user_id)
     |> where([s, _tp], s.inserted_at >= ^since)
     |> where([s, _tp], s.likely_ad == false)
+    |> where_tracked_profile_ids(tracked_profile_ids)
     |> preload(:tracked_profile)
     |> Repo.all()
   end
@@ -271,6 +289,12 @@ defmodule Instabot.Instagram do
 
   defp get_story_by_instagram_id(tracked_profile_id, instagram_story_id) do
     Repo.get_by(Story, tracked_profile_id: tracked_profile_id, instagram_story_id: instagram_story_id)
+  end
+
+  defp where_tracked_profile_ids(query, []), do: query
+
+  defp where_tracked_profile_ids(query, tracked_profile_ids) do
+    where(query, [record, _tp], record.tracked_profile_id in ^tracked_profile_ids)
   end
 
   defp classify_story_attrs(attrs) do

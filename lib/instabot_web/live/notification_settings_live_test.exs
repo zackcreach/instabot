@@ -1,6 +1,7 @@
 defmodule InstabotWeb.NotificationSettingsLiveTest do
   use InstabotWeb.ConnCase, async: true
 
+  import Instabot.InstagramFixtures
   import Phoenix.LiveViewTest
 
   alias Instabot.Notifications
@@ -84,5 +85,26 @@ defmodule InstabotWeb.NotificationSettingsLiveTest do
 
     assert false == preference.include_images
     assert false == preference.include_ocr
+  end
+
+  test "saves profile notification overrides", %{conn: conn, user: user} do
+    profile = tracked_profile_fixture(user)
+    {:ok, view, _html} = live(conn, ~p"/settings/notifications")
+
+    view
+    |> form("#profile-notification-form-#{profile.id}",
+      profile_notification_preference: %{
+        frequency: "immediate",
+        include_images: "false",
+        include_ocr: "inherit"
+      }
+    )
+    |> render_submit()
+
+    preference = Notifications.get_profile_preference_for_profile(profile.id)
+
+    assert "immediate" == preference.frequency
+    assert false == preference.include_images
+    assert nil == preference.include_ocr
   end
 end

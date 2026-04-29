@@ -15,6 +15,7 @@ defmodule Instabot.Instagram.TrackedProfile do
     has_many :posts, Instabot.Instagram.Post
     has_many :stories, Instabot.Instagram.Story
     has_many :scrape_logs, Instabot.Instagram.ScrapeLog
+    has_one :profile_notification_preference, Instabot.Notifications.ProfileNotificationPreference
 
     timestamps(type: :utc_datetime)
   end

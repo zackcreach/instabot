@@ -4,6 +4,7 @@ defmodule InstabotWeb.ProfilesLive do
 
   alias Instabot.Instagram
   alias Instabot.Instagram.TrackedProfile
+  alias Instabot.Notifications
   alias Instabot.Scraping.Events
   alias Instabot.Scraping.State, as: ScrapingState
   alias Instabot.Workers.ScrapeProfile
@@ -60,6 +61,7 @@ defmodule InstabotWeb.ProfilesLive do
                 <tr>
                   <th>Profile</th>
                   <th>Status</th>
+                  <th>Notifications</th>
                   <th>Last Scraped</th>
                   <th class="text-right">Actions</th>
                 </tr>
@@ -98,6 +100,16 @@ defmodule InstabotWeb.ProfilesLive do
                     ]}>
                       {if profile.is_active, do: "active", else: "paused"}
                     </div>
+                  </td>
+                  <td>
+                    <.link
+                      navigate={~p"/settings/notifications"}
+                      id={"profile-notification-link-#{profile.id}"}
+                      class="btn btn-ghost btn-xs"
+                    >
+                      <.icon name="hero-bell" class="size-3" />
+                      {profile_notification_summary(@profile_notification_preferences, profile.id)}
+                    </.link>
                   </td>
                   <td class="text-sm opacity-70">
                     {format_last_scraped(profile.last_scraped_at)}
@@ -177,12 +189,13 @@ defmodule InstabotWeb.ProfilesLive do
       Events.subscribe(user_id)
     end
 
-    profiles = Instagram.list_tracked_profiles(user_id)
+    profiles = Instagram.list_tracked_profiles_with_notification_preferences(user_id)
     changeset = Instagram.change_tracked_profile(%TrackedProfile{})
 
     socket =
       socket
       |> assign(:profiles, profiles)
+      |> assign_profile_notification_preferences(user_id, profiles)
       |> assign(:show_form, false)
       |> assign(:scrape_states, ScrapingState.list_for_user(user_id))
       |> assign_form(changeset)
@@ -220,12 +233,13 @@ defmodule InstabotWeb.ProfilesLive do
 
     case Instagram.create_tracked_profile(user_id, params) do
       {:ok, profile} ->
-        profiles = Instagram.list_tracked_profiles(user_id)
+        profiles = Instagram.list_tracked_profiles_with_notification_preferences(user_id)
         changeset = Instagram.change_tracked_profile(%TrackedProfile{})
 
         socket =
           socket
           |> assign(:profiles, profiles)
+          |> assign_profile_notification_preferences(user_id, profiles)
           |> assign(:show_form, false)
           |> assign_form(changeset)
 
@@ -240,12 +254,13 @@ defmodule InstabotWeb.ProfilesLive do
     user_id = socket.assigns.current_scope.user.id
     profile = Instagram.get_tracked_profile_for_user!(user_id, id)
     {:ok, _profile} = Instagram.toggle_active(profile)
-    profiles = Instagram.list_tracked_profiles(user_id)
+    profiles = Instagram.list_tracked_profiles_with_notification_preferences(user_id)
     action = if profile.is_active, do: "paused", else: "resumed"
 
     socket =
       socket
       |> assign(:profiles, profiles)
+      |> assign_profile_notification_preferences(user_id, profiles)
       |> put_flash(:info, "Profile @#{profile.instagram_username} #{action}.")
 
     {:noreply, socket}
@@ -276,11 +291,12 @@ defmodule InstabotWeb.ProfilesLive do
     user_id = socket.assigns.current_scope.user.id
     profile = Instagram.get_tracked_profile_for_user!(user_id, id)
     {:ok, _profile} = Instagram.delete_tracked_profile(profile)
-    profiles = Instagram.list_tracked_profiles(user_id)
+    profiles = Instagram.list_tracked_profiles_with_notification_preferences(user_id)
 
     socket =
       socket
       |> assign(:profiles, profiles)
+      |> assign_profile_notification_preferences(user_id, profiles)
       |> put_flash(:info, "Profile @#{profile.instagram_username} removed.")
 
     {:noreply, socket}
@@ -289,12 +305,13 @@ defmodule InstabotWeb.ProfilesLive do
   @impl true
   def handle_info({:scrape_event, event}, socket) do
     user_id = socket.assigns.current_scope.user.id
-    profiles = Instagram.list_tracked_profiles(user_id)
+    profiles = Instagram.list_tracked_profiles_with_notification_preferences(user_id)
     scrape_states = put_scrape_state(socket.assigns.scrape_states, event)
 
     socket =
       socket
       |> assign(:profiles, profiles)
+      |> assign_profile_notification_preferences(user_id, profiles)
       |> assign(:scrape_states, scrape_states)
 
     {:noreply, socket}
@@ -302,6 +319,28 @@ defmodule InstabotWeb.ProfilesLive do
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     assign(socket, :form, to_form(changeset))
+  end
+
+  defp assign_profile_notification_preferences(socket, user_id, profiles) do
+    user_preference = Notifications.get_or_create_preference(user_id)
+
+    preferences =
+      Map.new(profiles, fn profile ->
+        {profile.id,
+         Notifications.resolve_effective_profile_preference(
+           user_preference,
+           profile.profile_notification_preference
+         )}
+      end)
+
+    assign(socket, :profile_notification_preferences, preferences)
+  end
+
+  defp profile_notification_summary(preferences, profile_id) do
+    preferences
+    |> Map.fetch!(profile_id)
+    |> Map.fetch!(:frequency)
+    |> String.capitalize()
   end
 
   defp handle_profile_created_scrape(socket, profile) do

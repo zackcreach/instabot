@@ -47,7 +47,7 @@ defmodule Instabot.Workers.ScrapeProfile do
         :ok ->
           Events.broadcast(profile, :downstream)
           pending_ocr_count = enqueue_downstream_jobs(profile)
-          maybe_enqueue_immediate_notification(profile.user_id, pending_ocr_count)
+          maybe_enqueue_immediate_notification(profile, pending_ocr_count)
           :ok
 
         {:error, _reason} = error ->
@@ -134,13 +134,13 @@ defmodule Instabot.Workers.ScrapeProfile do
     length(stories)
   end
 
-  defp maybe_enqueue_immediate_notification(user_id, pending_ocr_count) do
-    case Notifications.get_preference_for_user(user_id) do
+  defp maybe_enqueue_immediate_notification(profile, pending_ocr_count) do
+    case Notifications.effective_profile_preference(profile.user_id, profile.id) do
       %{frequency: "immediate", include_ocr: true} when pending_ocr_count > 0 ->
         :ok
 
       %{frequency: "immediate"} ->
-        %{user_id: user_id}
+        %{user_id: profile.user_id, tracked_profile_id: profile.id}
         |> SendImmediateNotification.new()
         |> Oban.insert()
 

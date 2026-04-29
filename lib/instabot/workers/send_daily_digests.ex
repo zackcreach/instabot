@@ -12,18 +12,13 @@ defmodule Instabot.Workers.SendDailyDigests do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    current_hour = Time.utc_now().hour
-    preferences = Notifications.list_preferences_by_frequency("daily")
+    current_time = Time.utc_now()
+    jobs = Notifications.due_profile_digest_jobs("daily", current_time)
 
-    matching =
-      Enum.filter(preferences, fn pref ->
-        pref.daily_send_at != nil and pref.daily_send_at.hour == current_hour
-      end)
+    Logger.info("SendDailyDigests: #{length(jobs)} profiles due for daily digest at hour #{current_time.hour}")
 
-    Logger.info("SendDailyDigests: #{length(matching)} users due for daily digest at hour #{current_hour}")
-
-    Enum.each(matching, fn pref ->
-      %{user_id: pref.user_id, digest_type: "daily"}
+    Enum.each(jobs, fn job ->
+      %{user_id: job.user_id, digest_type: "daily", tracked_profile_id: job.tracked_profile_id}
       |> SendDigest.new()
       |> Oban.insert()
     end)

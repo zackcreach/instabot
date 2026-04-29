@@ -15,6 +15,7 @@ defmodule Instabot.Notifications.EmailDigest do
     field :period_end, :utc_datetime
 
     belongs_to :user, Instabot.Accounts.User, type: UXID
+    belongs_to :tracked_profile, Instabot.Instagram.TrackedProfile, type: UXID
 
     timestamps(type: :utc_datetime)
   end
@@ -27,7 +28,8 @@ defmodule Instabot.Notifications.EmailDigest do
       :stories_count,
       :sent_at,
       :period_start,
-      :period_end
+      :period_end,
+      :tracked_profile_id
     ])
     |> validate_required([:digest_type, :user_id])
     |> validate_inclusion(:digest_type, @digest_types)

@@ -53,7 +53,10 @@ defmodule Instabot.Workers.ProcessOCRTest do
 
       assert :ok == ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
 
-      assert_enqueued(worker: SendImmediateNotification, args: %{user_id: profile.user_id})
+      assert_enqueued(
+        worker: SendImmediateNotification,
+        args: %{user_id: profile.user_id, tracked_profile_id: profile.id}
+      )
     end
 
     test "does not enqueue immediate notification while another story is waiting for OCR", %{
@@ -73,7 +76,10 @@ defmodule Instabot.Workers.ProcessOCRTest do
 
       assert :ok == ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
 
-      refute_enqueued(worker: SendImmediateNotification, args: %{user_id: profile.user_id})
+      refute_enqueued(
+        worker: SendImmediateNotification,
+        args: %{user_id: profile.user_id, tracked_profile_id: profile.id}
+      )
     end
 
     test "leaves OCR pending when tesseract is not installed", %{story: story} do

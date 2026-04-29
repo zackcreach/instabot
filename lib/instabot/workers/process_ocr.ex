@@ -75,9 +75,10 @@ defmodule Instabot.Workers.ProcessOCR do
   defp notify_immediate_digest(story) do
     profile = Instagram.get_tracked_profile!(story.tracked_profile_id)
 
-    case {Notifications.get_preference_for_user(profile.user_id), Instagram.count_stories_waiting_for_ocr(profile.id)} do
+    case {Notifications.effective_profile_preference(profile.user_id, profile.id),
+          Instagram.count_stories_waiting_for_ocr(profile.id)} do
       {%{frequency: "immediate"}, 0} ->
-        %{user_id: profile.user_id}
+        %{user_id: profile.user_id, tracked_profile_id: profile.id}
         |> SendImmediateNotification.new()
         |> Oban.insert()
 

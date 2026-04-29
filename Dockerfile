@@ -61,6 +61,7 @@ RUN apt-get update -y && \
     ca-certificates \
     curl \
     fonts-liberation \
+    imagemagick \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \

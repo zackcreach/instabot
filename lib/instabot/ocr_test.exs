@@ -66,6 +66,38 @@ defmodule Instabot.OCRTest do
       assert {:ok, "Looking for creatives,\nthe13thclub.info@gmail.com"} == OCR.extract_text(image_path)
     end
 
+    test "merges overlapping text from preprocessed story crops" do
+      if System.find_executable("magick") do
+        with_fake_tesseract("""
+        #!/bin/sh
+        printf '%s\\n' 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext'
+
+        case "$1:$4" in
+          *.ocr-*:6)
+            printf '%s\\n' '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t91\tcoffee,'
+            printf '%s\\n' '5\t1\t1\t1\t1\t2\t0\t0\t10\t10\t92\tart,'
+            printf '%s\\n' '5\t1\t1\t1\t1\t3\t0\t0\t10\t10\t92\tclothes,'
+            printf '%s\\n' '5\t1\t1\t1\t1\t4\t0\t0\t10\t10\t91\tlunch'
+            ;;
+          *.ocr-*:11)
+            printf '%s\\n' '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t58\tbagels,'
+            printf '%s\\n' '5\t1\t1\t1\t1\t2\t0\t0\t10\t10\t37\tcoffee,'
+            printf '%s\\n' '5\t1\t1\t1\t1\t3\t0\t0\t10\t10\t92\tart,'
+            ;;
+          *)
+            printf '%s\\n' '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t88\tsaturday'
+            ;;
+        esac
+
+        exit 0
+        """)
+
+        image_path = valid_temp_image_path()
+
+        assert {:ok, "saturday\nbagels, coffee, art, clothes, lunch"} == OCR.extract_text(image_path)
+      end
+    end
+
     test "returns tesseract failures with status and output" do
       with_fake_tesseract("""
       #!/bin/sh
@@ -111,5 +143,11 @@ defmodule Instabot.OCRTest do
 
   defp temp_image_path do
     Path.join(System.tmp_dir!(), "instabot_ocr_image_#{System.unique_integer([:positive])}.png")
+  end
+
+  defp valid_temp_image_path do
+    image_path = temp_image_path()
+    {_output, 0} = System.cmd("magick", ["-size", "20x20", "xc:white", image_path])
+    image_path
   end
 end

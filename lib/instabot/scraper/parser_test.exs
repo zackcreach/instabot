@@ -435,6 +435,12 @@ defmodule Instabot.Scraper.ParserTest do
                         %{
                           "id" => "story_video",
                           "video_versions" => [%{"url" => "https://cdn.instagram.com/video.mp4"}],
+                          "image_versions2" => %{
+                            "candidates" => [
+                              %{"url" => "https://cdn.instagram.com/small.jpg"},
+                              %{"url" => "https://cdn.instagram.com/large.jpg"}
+                            ]
+                          },
                           "taken_at_timestamp" => 1_710_000_000
                         }
                       ]
@@ -451,6 +457,7 @@ defmodule Instabot.Scraper.ParserTest do
       assert "story_video" == story.instagram_story_id
       assert "video" == story.story_type
       assert "https://cdn.instagram.com/video.mp4" == story.media_url
+      assert "https://cdn.instagram.com/large.jpg" == story.thumbnail_url
     end
   end
 

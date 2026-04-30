@@ -6,6 +6,8 @@ defmodule Instabot.Media do
   alias Instabot.Media.Cloudinary
   alias Instabot.Media.LocalStorage
 
+  require Logger
+
   @default_uploads_dir "priv/static/uploads"
   @default_storage_adapter LocalStorage
 

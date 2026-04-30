@@ -2,16 +2,22 @@ defmodule Instabot.MediaTest do
   use ExUnit.Case, async: true
 
   alias Instabot.Media
+  alias Instabot.Media.Cloudinary
 
   @test_uploads_dir "test/tmp/uploads"
 
   setup do
+    media_config = Application.get_env(:instabot, Media)
+    cloudinary_config = Application.get_env(:instabot, Cloudinary)
+
     File.rm_rf!(@test_uploads_dir)
     Application.put_env(:instabot, :uploads_dir, @test_uploads_dir)
 
     on_exit(fn ->
       File.rm_rf!(@test_uploads_dir)
       Application.delete_env(:instabot, :uploads_dir)
+      restore_env(Media, media_config)
+      restore_env(Cloudinary, cloudinary_config)
     end)
   end
 
@@ -183,4 +189,12 @@ defmodule Instabot.MediaTest do
       assert is_nil(Media.story_preview_url(story, require_local_exists: true, blocked_hosts: ["cdninstagram.com"]))
     end
   end
+
+  defp restore_env(Media, nil), do: Application.delete_env(:instabot, Media)
+
+  defp restore_env(Cloudinary, nil), do: Application.delete_env(:instabot, Cloudinary)
+
+  defp restore_env(Media, value), do: Application.put_env(:instabot, Media, value)
+
+  defp restore_env(Cloudinary, value), do: Application.put_env(:instabot, Cloudinary, value)
 end

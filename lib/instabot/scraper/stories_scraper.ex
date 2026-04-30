@@ -76,7 +76,7 @@ defmodule Instabot.Scraper.StoriesScraper do
   Returns `{:ok, [story_map]}` or `{:error, reason}`.
 
   Each story_map contains: `:instagram_story_id`, `:story_type`, `:media_url`,
-  `:posted_at`, `:expires_at`, `:screenshot_base64`.
+  `:thumbnail_url`, `:posted_at`, `:expires_at`, `:screenshot_base64`.
   """
   @spec scrape(String.t(), map() | [map()], keyword()) :: {:ok, [map()]} | {:error, term()}
   def scrape(username, session_data, opts \\ []) do
@@ -327,7 +327,36 @@ defmodule Instabot.Scraper.StoriesScraper do
     end
   end
 
+  defp upload_screenshot(profile, %{thumbnail_url: thumbnail_url, instagram_story_id: story_id})
+       when is_binary(thumbnail_url) and thumbnail_url != "" do
+    subdirectory = Path.join("stories", profile.id)
+    filename = thumbnail_filename(story_id, thumbnail_url)
+
+    case Media.download_and_upload(thumbnail_url, subdirectory, filename) do
+      {:ok, result} ->
+        upload_screenshot_attrs(result, story_id)
+
+      {:error, reason} ->
+        Logger.warning("Failed to upload story thumbnail #{story_id}: #{inspect(reason)}")
+        %{}
+    end
+  end
+
   defp upload_screenshot(_profile, _story), do: %{}
+
+  defp thumbnail_filename(story_id, thumbnail_url) do
+    extension =
+      thumbnail_url
+      |> URI.parse()
+      |> Map.get(:path, "")
+      |> Path.extname()
+      |> String.downcase()
+
+    case extension do
+      "" -> "#{story_id}_thumbnail.jpg"
+      value -> "#{story_id}_thumbnail#{value}"
+    end
+  end
 
   defp upload_screenshot_attrs(result, story_id) do
     if valid_screenshot_upload?(result) do

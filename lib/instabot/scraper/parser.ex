@@ -147,7 +147,7 @@ defmodule Instabot.Scraper.Parser do
   Extracts story data from JS-evaluated story metadata.
   Expects a list of maps from `browser.evaluate()` calls.
   Returns a list of maps with `:instagram_story_id`, `:story_type`, `:media_url`,
-  `:posted_at`, `:expires_at`.
+  `:thumbnail_url`, `:posted_at`, `:expires_at`.
   """
   @spec extract_stories([map()]) :: [map()]
   def extract_stories(story_items) when is_list(story_items) do
@@ -156,6 +156,7 @@ defmodule Instabot.Scraper.Parser do
         instagram_story_id: item["id"] || item["pk"] || generate_story_id(),
         story_type: classify_story_type(item),
         media_url: extract_story_media_url(item),
+        thumbnail_url: extract_story_thumbnail_url(item),
         posted_at: parse_timestamp(item["taken_at"] || item["taken_at_timestamp"]),
         expires_at: parse_timestamp(item["expiring_at"] || item["expiring_at_timestamp"])
       }
@@ -565,6 +566,20 @@ defmodule Instabot.Scraper.Parser do
   end
 
   defp extract_story_media_url(_), do: nil
+
+  defp extract_story_thumbnail_url(%{"image_url" => url}) when is_binary(url), do: decode_html_entities(url)
+  defp extract_story_thumbnail_url(%{"display_url" => url}) when is_binary(url), do: decode_html_entities(url)
+
+  defp extract_story_thumbnail_url(%{"image_versions2" => %{"candidates" => candidates}}) when is_list(candidates) do
+    candidates
+    |> List.last()
+    |> case do
+      %{"url" => url} when is_binary(url) -> decode_html_entities(url)
+      _ -> nil
+    end
+  end
+
+  defp extract_story_thumbnail_url(_), do: nil
 
   defp collect_story_items(items) when is_list(items), do: Enum.flat_map(items, &collect_story_items/1)
 

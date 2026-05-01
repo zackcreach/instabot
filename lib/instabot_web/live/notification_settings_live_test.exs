@@ -92,11 +92,14 @@ defmodule InstabotWeb.NotificationSettingsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/settings/notifications")
 
     view
-    |> form("#profile-notification-form-#{profile.id}",
-      profile_notification_preference: %{
-        frequency: "immediate",
-        include_images: "false",
-        include_ocr: "inherit"
+    |> form("#notification_form",
+      notification_preference: %{frequency: "daily"},
+      profile_notification_preferences: %{
+        profile.id => %{
+          frequency: "immediate",
+          include_images: "false",
+          include_ocr: "inherit"
+        }
       }
     )
     |> render_submit()
@@ -106,5 +109,13 @@ defmodule InstabotWeb.NotificationSettingsLiveTest do
     assert "immediate" == preference.frequency
     assert false == preference.include_images
     assert nil == preference.include_ocr
+  end
+
+  test "renders profile overrides inside the page preferences form", %{conn: conn, user: user} do
+    profile = tracked_profile_fixture(user)
+    {:ok, view, _html} = live(conn, ~p"/settings/notifications")
+
+    assert has_element?(view, "#notification_form #profile-notification-frequency-#{profile.id}")
+    refute has_element?(view, "#profile-notification-form-#{profile.id}")
   end
 end

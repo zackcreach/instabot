@@ -48,8 +48,9 @@ defmodule Instabot.Instagram.Feed do
   end
 
   def list_stories(user_id, opts \\ []) do
-    user_id
-    |> stories_query(opts)
+    Story
+    |> join(:inner, [s], tp in TrackedProfile, on: s.tracked_profile_id == tp.id)
+    |> where([s, _tp], s.id in subquery(deduped_story_ids_query(user_id, opts)))
     |> order_by([s, _tp], desc_nulls_last: s.posted_at, desc: s.inserted_at)
     |> limit(^Keyword.get(opts, :limit, @default_limit))
     |> offset(^Keyword.get(opts, :offset, 0))
@@ -59,7 +60,7 @@ defmodule Instabot.Instagram.Feed do
 
   def count_stories(user_id, opts \\ []) do
     user_id
-    |> stories_query(opts)
+    |> deduped_story_ids_query(opts)
     |> Repo.aggregate(:count)
   end
 
@@ -121,6 +122,29 @@ defmodule Instabot.Instagram.Feed do
     |> where([_s, tp], tp.user_id == ^user_id)
     |> filter_stories_by_profile(opts[:profile_id])
     |> filter_stories_by_ads(opts[:include_ads])
+  end
+
+  defp deduped_story_ids_query(user_id, opts) do
+    ranked_stories_query =
+      user_id
+      |> stories_query(opts)
+      |> windows([s, _tp],
+        story_identity: [
+          partition_by: [
+            s.tracked_profile_id,
+            fragment("COALESCE(NULLIF(split_part(?, ?, 1), ''), ?)", s.media_url, ^"?", s.instagram_story_id)
+          ],
+          order_by: [desc_nulls_last: s.posted_at, desc: s.inserted_at, desc: s.id]
+        ]
+      )
+      |> select([s, _tp], %{
+        id: s.id,
+        duplicate_rank: over(row_number(), :story_identity)
+      })
+
+    from story in subquery(ranked_stories_query),
+      where: story.duplicate_rank == 1,
+      select: story.id
   end
 
   defp filter_stories_by_profile(query, profile_id) when profile_id in [nil, ""], do: query

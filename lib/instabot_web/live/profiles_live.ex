@@ -43,6 +43,12 @@ defmodule InstabotWeb.ProfilesLive do
               type="text"
               placeholder="Display name (optional)"
             />
+            <.input
+              field={@form[:scrape_interval_minutes]}
+              type="select"
+              label="Scrape every"
+              options={@scrape_interval_options}
+            />
             <div class="flex gap-2">
               <.button phx-disable-with="Adding..." class="btn btn-primary flex-1">
                 Add Profile
@@ -62,6 +68,7 @@ defmodule InstabotWeb.ProfilesLive do
                   <th>Profile</th>
                   <th>Status</th>
                   <th>Notifications</th>
+                  <th>Scrape Every</th>
                   <th>Last Scraped</th>
                   <th class="text-right">Actions</th>
                 </tr>
@@ -110,6 +117,24 @@ defmodule InstabotWeb.ProfilesLive do
                       <.icon name="hero-bell" class="size-3" />
                       {profile_notification_summary(@profile_notification_preferences, profile.id)}
                     </.link>
+                  </td>
+                  <td>
+                    <.form
+                      for={%{}}
+                      as={:tracked_profile}
+                      id={"profile-scrape-interval-form-#{profile.id}"}
+                      phx-change="update_scrape_interval"
+                      phx-value-id={profile.id}
+                    >
+                      <.input
+                        id={"profile-scrape-interval-#{profile.id}"}
+                        name="tracked_profile[scrape_interval_minutes]"
+                        type="select"
+                        value={profile.scrape_interval_minutes}
+                        options={@scrape_interval_options}
+                        class="select select-xs w-32"
+                      />
+                    </.form>
                   </td>
                   <td class="text-sm opacity-70">
                     {format_last_scraped(profile.last_scraped_at)}
@@ -198,6 +223,7 @@ defmodule InstabotWeb.ProfilesLive do
       |> assign_profile_notification_preferences(user_id, profiles)
       |> assign(:show_form, false)
       |> assign(:scrape_states, ScrapingState.list_for_user(user_id))
+      |> assign(:scrape_interval_options, Instagram.scrape_interval_options())
       |> assign_form(changeset)
 
     {:ok, socket}
@@ -284,6 +310,27 @@ defmodule InstabotWeb.ProfilesLive do
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Failed to queue scrape.")}
+    end
+  end
+
+  def handle_event("update_scrape_interval", %{"id" => id, "tracked_profile" => params}, socket) do
+    user_id = socket.assigns.current_scope.user.id
+    profile = Instagram.get_tracked_profile_for_user!(user_id, id)
+
+    case Instagram.update_tracked_profile_scrape_interval(profile, params) do
+      {:ok, profile} ->
+        profiles = Instagram.list_tracked_profiles_with_notification_preferences(user_id)
+
+        socket =
+          socket
+          |> assign(:profiles, profiles)
+          |> assign_profile_notification_preferences(user_id, profiles)
+          |> put_flash(:info, "Scrape interval updated for @#{profile.instagram_username}.")
+
+        {:noreply, socket}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply, put_flash(socket, :error, "Choose a supported scrape interval.")}
     end
   end
 

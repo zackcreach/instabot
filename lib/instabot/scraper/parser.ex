@@ -151,16 +151,21 @@ defmodule Instabot.Scraper.Parser do
   """
   @spec extract_stories([map()]) :: [map()]
   def extract_stories(story_items) when is_list(story_items) do
-    Enum.map(story_items, fn item ->
+    story_items
+    |> Enum.map(fn item ->
+      media_url = extract_story_media_url(item)
+      thumbnail_url = extract_story_thumbnail_url(item)
+
       %{
-        instagram_story_id: item["id"] || item["pk"] || generate_story_id(),
+        instagram_story_id: item["id"] || item["pk"] || generate_story_id(item, media_url || thumbnail_url),
         story_type: classify_story_type(item),
-        media_url: extract_story_media_url(item),
-        thumbnail_url: extract_story_thumbnail_url(item),
+        media_url: media_url,
+        thumbnail_url: thumbnail_url,
         posted_at: parse_timestamp(item["taken_at"] || item["taken_at_timestamp"]),
         expires_at: parse_timestamp(item["expiring_at"] || item["expiring_at_timestamp"])
       }
     end)
+    |> Enum.uniq_by(& &1.instagram_story_id)
   end
 
   def extract_stories(_), do: []
@@ -603,7 +608,22 @@ defmodule Instabot.Scraper.Parser do
     String.contains?(html, "og:video") or String.contains?(html, "\"is_video\":true")
   end
 
-  defp generate_story_id do
+  defp generate_story_id(item, media_url) when is_binary(media_url) do
+    [
+      media_url,
+      item["taken_at"],
+      item["taken_at_timestamp"],
+      item["expiring_at"],
+      item["expiring_at_timestamp"]
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(":")
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.url_encode64(padding: false)
+    |> binary_part(0, 32)
+  end
+
+  defp generate_story_id(_item, _media_url) do
     8
     |> :crypto.strong_rand_bytes()
     |> Base.url_encode64(padding: false)

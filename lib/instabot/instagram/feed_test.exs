@@ -258,6 +258,29 @@ defmodule Instabot.Instagram.FeedTest do
       assert 2 == length(Feed.list_stories(user.id, limit: 2))
       assert 3 == length(Feed.list_stories(user.id, limit: 3, offset: 2))
     end
+
+    test "deduplicates stories by profile and media URL", %{user: user} do
+      profile = tracked_profile_fixture(user)
+      posted_at = DateTime.utc_now(:second)
+
+      older_duplicate =
+        story_fixture(profile, %{
+          instagram_story_id: "older_duplicate",
+          media_url: "https://cdn.instagram.com/story.jpg?token=old",
+          posted_at: DateTime.add(posted_at, -3600, :second)
+        })
+
+      newer_duplicate =
+        story_fixture(profile, %{
+          instagram_story_id: "newer_duplicate",
+          media_url: "https://cdn.instagram.com/story.jpg?token=new",
+          posted_at: posted_at
+        })
+
+      assert [returned] = Feed.list_stories(user.id)
+      assert newer_duplicate.id == returned.id
+      refute older_duplicate.id == returned.id
+    end
   end
 
   describe "count_stories/2" do
@@ -276,6 +299,24 @@ defmodule Instabot.Instagram.FeedTest do
 
       assert 1 == Feed.count_stories(user.id)
       assert 2 == Feed.count_stories(user.id, include_ads: true)
+    end
+
+    test "deduplicates stories by profile and media URL", %{user: user} do
+      profile = tracked_profile_fixture(user)
+
+      _first_duplicate =
+        story_fixture(profile, %{
+          instagram_story_id: "first_duplicate_count",
+          media_url: "https://cdn.instagram.com/story.jpg?token=first"
+        })
+
+      _second_duplicate =
+        story_fixture(profile, %{
+          instagram_story_id: "second_duplicate_count",
+          media_url: "https://cdn.instagram.com/story.jpg?token=second"
+        })
+
+      assert 1 == Feed.count_stories(user.id)
     end
   end
 

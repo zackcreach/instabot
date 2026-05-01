@@ -112,6 +112,12 @@ defmodule Instabot.Instagram do
     |> Repo.update()
   end
 
+  def update_tracked_profile_scrape_interval(%TrackedProfile{} = profile, attrs) do
+    profile
+    |> TrackedProfile.changeset(attrs)
+    |> Repo.update()
+  end
+
   def update_last_scraped(%TrackedProfile{} = profile) do
     profile
     |> Ecto.Changeset.change(%{last_scraped_at: DateTime.utc_now(:second)})
@@ -123,6 +129,25 @@ defmodule Instabot.Instagram do
     |> where(is_active: true)
     |> preload(:user)
     |> Repo.all()
+  end
+
+  def list_due_active_tracked_profiles(now \\ DateTime.utc_now(:second)) do
+    TrackedProfile
+    |> where(is_active: true)
+    |> where(
+      [profile],
+      is_nil(profile.last_scraped_at) or
+        profile.last_scraped_at <=
+          fragment("? - (? * interval '1 minute')", type(^now, :utc_datetime), profile.scrape_interval_minutes)
+    )
+    |> preload(:user)
+    |> Repo.all()
+  end
+
+  def scrape_interval_options do
+    Enum.map(TrackedProfile.scrape_interval_minutes(), fn minutes ->
+      {scrape_interval_label(minutes), minutes}
+    end)
   end
 
   def create_post(tracked_profile_id, attrs) do
@@ -290,6 +315,12 @@ defmodule Instabot.Instagram do
   defp get_story_by_instagram_id(tracked_profile_id, instagram_story_id) do
     Repo.get_by(Story, tracked_profile_id: tracked_profile_id, instagram_story_id: instagram_story_id)
   end
+
+  defp scrape_interval_label(30), do: "30 minutes"
+  defp scrape_interval_label(60), do: "1 hour"
+  defp scrape_interval_label(360), do: "6 hours"
+  defp scrape_interval_label(720), do: "12 hours"
+  defp scrape_interval_label(1440), do: "24 hours"
 
   defp where_tracked_profile_ids(query, []), do: query
 

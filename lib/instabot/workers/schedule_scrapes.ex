@@ -13,7 +13,7 @@ defmodule Instabot.Workers.ScheduleScrapes do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    profiles = Instagram.list_active_tracked_profiles()
+    profiles = Instagram.list_due_active_tracked_profiles()
 
     Logger.info("ScheduleScrapes: enqueueing #{length(profiles)} profile scrape jobs")
 

@@ -377,6 +377,29 @@ defmodule Instabot.Scraper.ParserTest do
       assert String.length(story.instagram_story_id) > 0
     end
 
+    test "generates stable story IDs from media metadata when none provided" do
+      js_data = [
+        %{
+          "image_url" => "https://example.com/img.jpg?token=abc",
+          "taken_at_timestamp" => 1_710_000_000,
+          "expiring_at_timestamp" => 1_710_086_400
+        }
+      ]
+
+      [first_story] = Parser.extract_stories(js_data)
+      [second_story] = Parser.extract_stories(js_data)
+      assert first_story.instagram_story_id == second_story.instagram_story_id
+    end
+
+    test "deduplicates stories without provided IDs by stable generated ID" do
+      js_data = [
+        %{"image_url" => "https://example.com/img.jpg", "taken_at_timestamp" => 1_710_000_000},
+        %{"image_url" => "https://example.com/img.jpg", "taken_at_timestamp" => 1_710_000_000}
+      ]
+
+      assert [_story] = Parser.extract_stories(js_data)
+    end
+
     test "returns empty list for nil input" do
       assert [] == Parser.extract_stories(nil)
     end

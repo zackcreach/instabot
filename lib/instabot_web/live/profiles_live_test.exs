@@ -32,6 +32,13 @@ defmodule InstabotWeb.ProfilesLiveTest do
 
       assert html =~ "Apr 24, 2026 10:01 PM"
     end
+
+    test "renders scrape interval controls", %{conn: conn, profile: profile} do
+      {:ok, view, _html} = live(conn, ~p"/profiles")
+
+      assert has_element?(view, "#profile-scrape-interval-form-#{profile.id}")
+      assert has_element?(view, "#profile-scrape-interval-#{profile.id}")
+    end
   end
 
   describe "save_profile event" do
@@ -99,6 +106,23 @@ defmodule InstabotWeb.ProfilesLiveTest do
       {:ok, view, _html} = live(conn, ~p"/profiles")
 
       assert has_element?(view, "#profile-scrape-state-#{profile.id}", "Scrape complete")
+    end
+  end
+
+  describe "update_scrape_interval event" do
+    test "updates the profile scrape interval", %{conn: conn, profile: profile} do
+      {:ok, view, _html} = live(conn, ~p"/profiles")
+
+      view
+      |> form("#profile-scrape-interval-form-#{profile.id}", %{
+        "tracked_profile" => %{"scrape_interval_minutes" => "360"}
+      })
+      |> render_change()
+
+      profile = Repo.get!(TrackedProfile, profile.id)
+
+      assert 360 == profile.scrape_interval_minutes
+      assert render(view) =~ "Scrape interval updated for @natgeo."
     end
   end
 

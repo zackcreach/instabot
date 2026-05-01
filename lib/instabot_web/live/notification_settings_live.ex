@@ -18,11 +18,16 @@ defmodule InstabotWeb.NotificationSettingsLive do
         class="mx-auto w-full max-w-5xl space-y-6"
       >
         <Card.render>
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex items-start justify-between gap-4 mb-4">
             <h3 class="text-lg font-semibold">Notification Settings</h3>
-            <.link navigate={~p"/users/settings"} class="btn btn-ghost btn-xs">
-              ← Account Settings
-            </.link>
+            <div class="flex items-center gap-2">
+              <.link navigate={~p"/users/settings"} class="btn btn-ghost btn-xs">
+                ← Account Settings
+              </.link>
+              <.button phx-disable-with="Saving..." class="btn btn-primary btn-sm">
+                Save Preferences
+              </.button>
+            </div>
           </div>
           <p class="text-sm opacity-70 mb-6">
             Configure how and when you receive email digests of new posts and stories.
@@ -181,12 +186,6 @@ defmodule InstabotWeb.NotificationSettingsLive do
             </table>
           </div>
         </Card.render>
-
-        <div class="flex justify-end">
-          <.button phx-disable-with="Saving..." class="btn btn-primary w-full sm:w-auto sm:min-w-56">
-            Save Preferences
-          </.button>
-        </div>
       </.form>
     </Layouts.app>
     """

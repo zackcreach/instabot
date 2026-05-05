@@ -63,6 +63,7 @@ config :instabot, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"*/30 * * * *", Instabot.Workers.ScheduleScrapes},
+       {"*/30 * * * *", Instabot.Workers.ScheduleShopifyScrapes},
        {"0 * * * *", Instabot.Workers.SendDailyDigests},
        {"0 8 * * 1", Instabot.Workers.SendWeeklyDigests}
      ]}

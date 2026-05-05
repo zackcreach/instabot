@@ -62,6 +62,7 @@ defmodule InstabotWeb.Router do
       live "/feed/stories/:id", StoriesLive, :show
       live "/profiles", ProfilesLive, :index
       live "/profiles/new", ProfilesLive, :new
+      live "/shops", ShopsLive, :index
       live "/connect", ConnectLive, :index
       live "/settings/notifications", NotificationSettingsLive, :index
       live "/users/settings", UserLive.Settings, :edit

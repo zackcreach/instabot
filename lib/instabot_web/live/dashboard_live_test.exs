@@ -16,6 +16,17 @@ defmodule InstabotWeb.DashboardLiveTest do
   end
 
   describe "scrape_now event" do
+    test "renders Shopify navigation link for signed-in users", %{conn: conn} do
+      html =
+        conn
+        |> get(~p"/")
+        |> html_response(200)
+
+      assert html =~ ~s(id="shops-nav-link")
+      assert html =~ ~s(href="/shops")
+      assert html =~ "Shops"
+    end
+
     test "renders profile avatar images when available", %{conn: conn, user: user} do
       _profile =
         tracked_profile_fixture(user, %{

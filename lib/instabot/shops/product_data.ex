@@ -7,7 +7,7 @@ defmodule Instabot.Shops.ProductData do
   def fetch(product_url) do
     product_url
     |> product_json_url()
-    |> Req.get()
+    |> Req.get(decode_body: false)
     |> parse_response()
   end
 
@@ -29,6 +29,14 @@ defmodule Instabot.Shops.ProductData do
 
   defp parse_response({:ok, %{status: 200, body: body}}) when is_map(body) do
     {:ok, parse_product(body)}
+  end
+
+  defp parse_response({:ok, %{status: 200, body: body}}) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, product} when is_map(product) -> {:ok, parse_product(product)}
+      {:ok, _decoded} -> {:error, :invalid_product_payload}
+      {:error, reason} -> {:error, {:invalid_product_payload, reason}}
+    end
   end
 
   defp parse_response({:ok, %{status: status}}), do: {:error, {:product_request_failed, status}}

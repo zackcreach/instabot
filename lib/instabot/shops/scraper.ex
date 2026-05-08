@@ -49,8 +49,7 @@ defmodule Instabot.Shops.Scraper do
   defp scrape_with_browser(browser, site) do
     with {:ok, _launch} <- Browser.launch(browser, []),
          {:ok, page_id} <- Browser.new_page(browser, viewport: @viewport),
-         {:ok, _navigation} <-
-           Browser.navigate(browser, page_id, site.home_url, wait_until: "networkidle", timeout: 45_000),
+         {:ok, _navigation} <- Browser.navigate(browser, page_id, site.home_url, wait_until: "load", timeout: 45_000),
          {:ok, banner_text} <- Browser.evaluate(browser, page_id, @top_banner_js),
          {:ok, %{"base64" => base64}} <- Browser.screenshot(browser, page_id, full_page: true),
          {:ok, screenshot_attrs} <- upload_screenshot(site, base64),

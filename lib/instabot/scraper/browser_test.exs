@@ -86,6 +86,16 @@ defmodule Instabot.Scraper.BrowserTest do
       assert is_binary(base64)
       Browser.stop(pid)
     end
+
+    test "passes clip options to the bridge" do
+      {:ok, pid} = start_mock_browser()
+      {:ok, _} = Browser.launch(pid)
+      {:ok, page_id} = Browser.new_page(pid)
+      {:ok, data} = Browser.screenshot(pid, page_id, clip: %{x: 10, y: 20, width: 300, height: 400})
+      assert %{"base64" => base64} = data
+      assert "fake_clipped_png_data" == Base.decode64!(base64)
+      Browser.stop(pid)
+    end
   end
 
   describe "set_cookies/3 and get_cookies/2" do

@@ -1,11 +1,14 @@
 defmodule Instabot.InstagramTest do
   use Instabot.DataCase, async: true
 
+  import Ecto.Query
   import Instabot.AccountsFixtures
   import Instabot.InstagramFixtures
 
   alias Instabot.Instagram
   alias Instabot.Instagram.Feed
+  alias Instabot.Instagram.MediaFingerprint
+  alias Instabot.Repo
 
   describe "upsert_post_from_scrape/2" do
     test "updates an existing shell post with scraped details" do
@@ -75,6 +78,54 @@ defmodule Instabot.InstagramTest do
       assert ["existing"] == updated_post.hashtags
       assert ["https://example.com/existing.jpg"] == updated_post.media_urls
       assert "https://instagram.com/p/rich_post" == updated_post.permalink
+    end
+
+    test "skips a new post when all fingerprinted media are duplicate for the profile" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+      canonical = post_fixture(profile)
+      fingerprint = fingerprint_attrs("same-media", "0000000000000000", 0)
+      assert {:ok, _media_fingerprint} = Instagram.create_media_fingerprint(profile.id, :post, canonical.id, fingerprint)
+
+      assert {:ok, nil, :duplicate} =
+               Instagram.upsert_post_from_scrape(profile.id, %{
+                 instagram_post_id: "visual_duplicate_post",
+                 post_type: "image",
+                 media_urls: ["https://example.com/duplicate.jpg"],
+                 media_fingerprints: [fingerprint]
+               })
+
+      assert [] ==
+               user.id
+               |> Feed.list_posts(profile_id: profile.id)
+               |> Enum.filter(&(&1.instagram_post_id == "visual_duplicate_post"))
+    end
+
+    test "inserts a carousel post when at least one fingerprinted media item is novel" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+      canonical = post_fixture(profile)
+      duplicate_fingerprint = fingerprint_attrs("duplicate-media", "0000000000000000", 0)
+      novel_fingerprint = fingerprint_attrs("novel-media", "ffffffffffffffff", 1)
+
+      assert {:ok, _media_fingerprint} =
+               Instagram.create_media_fingerprint(profile.id, :post, canonical.id, duplicate_fingerprint)
+
+      assert {:ok, post, :inserted} =
+               Instagram.upsert_post_from_scrape(profile.id, %{
+                 instagram_post_id: "mixed_carousel",
+                 post_type: "carousel",
+                 media_urls: ["https://example.com/novel.jpg"],
+                 media_fingerprints: [duplicate_fingerprint, novel_fingerprint]
+               })
+
+      registered_fingerprints =
+        MediaFingerprint
+        |> where([media_fingerprint], media_fingerprint.source_kind == "post" and media_fingerprint.source_id == ^post.id)
+        |> Repo.all()
+
+      assert [registered] = registered_fingerprints
+      assert novel_fingerprint.exact_sha256 == registered.exact_sha256
     end
   end
 
@@ -227,5 +278,39 @@ defmodule Instabot.InstagramTest do
       assert "priv/static/screenshots/story.png" == updated_story.screenshot_path
       assert "https://example.com/story.jpg" == updated_story.media_url
     end
+
+    test "skips a story with a new id when media fingerprint matches the profile history" do
+      user = user_fixture()
+      profile = tracked_profile_fixture(user)
+      canonical = story_fixture(profile, %{instagram_story_id: "canonical_story"})
+      fingerprint = fingerprint_attrs("same-story-media", "0000000000000000", 0)
+      assert {:ok, _media_fingerprint} = Instagram.create_media_fingerprint(profile.id, :story, canonical.id, fingerprint)
+
+      assert {:ok, nil, :duplicate} =
+               Instagram.upsert_story_from_scrape(profile.id, %{
+                 instagram_story_id: "new_story_id_same_media",
+                 story_type: "image",
+                 media_fingerprint: fingerprint
+               })
+
+      assert [] ==
+               stories_by_instagram_id(profile.id, "new_story_id_same_media")
+    end
+  end
+
+  defp fingerprint_attrs(exact_sha256, dhash, position) do
+    %{
+      exact_sha256: exact_sha256,
+      dhash: dhash,
+      media_position: position,
+      width: 100,
+      height: 100
+    }
+  end
+
+  defp stories_by_instagram_id(tracked_profile_id, instagram_story_id) do
+    Instabot.Instagram.Story
+    |> where(tracked_profile_id: ^tracked_profile_id, instagram_story_id: ^instagram_story_id)
+    |> Repo.all()
   end
 end

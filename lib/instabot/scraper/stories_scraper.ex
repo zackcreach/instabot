@@ -10,6 +10,7 @@ defmodule Instabot.Scraper.StoriesScraper do
   alias Instabot.Instagram.InstagramConnection
   alias Instabot.Instagram.TrackedProfile
   alias Instabot.Media
+  alias Instabot.Media.Fingerprint
   alias Instabot.Scraper.AntiDetection
   alias Instabot.Scraper.Browser
   alias Instabot.Scraper.Parser
@@ -71,6 +72,37 @@ defmodule Instabot.Scraper.StoriesScraper do
   })()
   """
 
+  @story_media_clip_js """
+  (() => {
+    const candidates = Array.from(document.querySelectorAll("video, img"))
+      .map(element => {
+        const rect = element.getBoundingClientRect();
+        const visibleWidth = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
+        const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+
+        return {
+          x: Math.max(rect.left, 0),
+          y: Math.max(rect.top, 0),
+          width: visibleWidth,
+          height: visibleHeight,
+          area: visibleWidth * visibleHeight
+        };
+      })
+      .filter(rect => rect.width >= 200 && rect.height >= 200 && rect.area > 0)
+      .sort((left, right) => right.area - left.area);
+
+    const clip = candidates[0];
+    if (!clip) return null;
+
+    return {
+      x: Math.round(clip.x),
+      y: Math.round(clip.y),
+      width: Math.round(clip.width),
+      height: Math.round(clip.height)
+    };
+  })()
+  """
+
   @doc """
   Scrapes stories for the given username using the provided cookies.
   Returns `{:ok, [story_map]}` or `{:error, reason}`.
@@ -113,9 +145,9 @@ defmodule Instabot.Scraper.StoriesScraper do
   defp scrape_and_persist_with_log(profile, connection, log, opts) do
     with {:ok, session_data} <- Encryption.decrypt_term(connection.encrypted_cookies),
          {:ok, stories} <- scrape(profile.instagram_username, session_data, opts) do
-      persisted_count = persist_stories(profile, stories)
+      %{persisted_count: persisted_count, duplicate_count: duplicate_count} = persist_stories(profile, stories)
       Instagram.update_last_scraped(profile)
-      Instagram.complete_scrape_log(log, %{stories_found: persisted_count})
+      Instagram.complete_scrape_log(log, %{stories_found: persisted_count, duplicate_stories_found: duplicate_count})
     else
       {:error, reason} = error ->
         Instagram.fail_scrape_log(log, inspect(reason))
@@ -177,7 +209,7 @@ defmodule Instabot.Scraper.StoriesScraper do
       with :ok <- maybe_advance_story(browser, page_id, index),
            :ok <- dismiss_story_gate(browser, page_id),
            true <- story_viewer_ready?(browser, page_id),
-           {:ok, %{"base64" => base64}} <- Browser.screenshot(browser, page_id) do
+           {:ok, base64} <- story_screenshot(browser, page_id) do
         capture_signals = capture_signals(browser, page_id, username)
 
         story =
@@ -237,6 +269,25 @@ defmodule Instabot.Scraper.StoriesScraper do
     end
   end
 
+  defp story_screenshot(browser, page_id) do
+    case Browser.evaluate(browser, page_id, @story_media_clip_js) do
+      {:ok, %{"height" => height, "width" => width} = clip} when height > 0 and width > 0 ->
+        case Browser.screenshot(browser, page_id, clip: clip) do
+          {:ok, %{"base64" => base64}} -> {:ok, base64}
+          {:error, _reason} -> full_story_screenshot(browser, page_id)
+        end
+
+      _ ->
+        full_story_screenshot(browser, page_id)
+    end
+  end
+
+  defp full_story_screenshot(browser, page_id) do
+    with {:ok, %{"base64" => base64}} <- Browser.screenshot(browser, page_id) do
+      {:ok, base64}
+    end
+  end
+
   defp story_capture_signals_js(username) do
     encoded_username = Jason.encode!(username)
 
@@ -282,8 +333,8 @@ defmodule Instabot.Scraper.StoriesScraper do
   defp capture_signal_attrs(_signals), do: %{}
 
   defp persist_stories(profile, stories) do
-    Enum.count(stories, fn story ->
-      screenshot_attrs = upload_screenshot(profile, story)
+    Enum.reduce(stories, %{persisted_count: 0, duplicate_count: 0}, fn story, acc ->
+      prepared_screenshot = prepare_screenshot(profile, story)
 
       story_attrs =
         Map.merge(
@@ -296,28 +347,82 @@ defmodule Instabot.Scraper.StoriesScraper do
             posted_at: story.posted_at,
             expires_at: story.expires_at
           },
-          screenshot_attrs
+          prepared_screenshot.attrs
         )
 
       case Instagram.upsert_story_from_scrape(profile.id, story_attrs) do
         {:ok, story, status} when status in [:inserted, :updated] ->
           Events.broadcast_story_created(profile, story)
-          true
+          %{acc | persisted_count: acc.persisted_count + 1}
 
         {:ok, _story, :unchanged} ->
-          false
+          acc
+
+        {:ok, nil, :duplicate} ->
+          %{acc | duplicate_count: acc.duplicate_count + 1}
 
         {:error, _changeset} ->
-          false
+          acc
       end
     end)
   end
 
-  defp upload_screenshot(profile, %{screenshot_base64: base64, instagram_story_id: story_id}) when is_binary(base64) do
+  defp prepare_screenshot(profile, %{screenshot_base64: base64, instagram_story_id: story_id}) when is_binary(base64) do
+    bytes = Base.decode64!(base64)
+
+    case Fingerprint.from_bytes(bytes) do
+      {:ok, fingerprint} ->
+        if Instagram.media_duplicate?(profile.id, fingerprint) do
+          %{attrs: %{media_fingerprint: fingerprint}}
+        else
+          %{attrs: Map.put(upload_screenshot_bytes(profile, story_id, bytes), :media_fingerprint, fingerprint)}
+        end
+
+      {:error, reason} ->
+        Logger.warning("Failed to fingerprint story screenshot #{story_id}: #{inspect(reason)}")
+        %{attrs: upload_screenshot_bytes(profile, story_id, bytes)}
+    end
+  end
+
+  defp prepare_screenshot(profile, %{thumbnail_url: thumbnail_url, instagram_story_id: story_id})
+       when is_binary(thumbnail_url) and thumbnail_url != "" do
+    case Media.download(thumbnail_url) do
+      {:ok, download} ->
+        prepare_thumbnail(profile, story_id, thumbnail_url, download)
+
+      {:error, reason} ->
+        Logger.warning("Failed to download story thumbnail #{story_id}: #{inspect(reason)}")
+        %{attrs: %{}}
+    end
+  end
+
+  defp prepare_screenshot(_profile, _story), do: %{attrs: %{}}
+
+  defp prepare_thumbnail(profile, story_id, thumbnail_url, download) do
+    case Fingerprint.from_bytes(download.body) do
+      {:ok, fingerprint} ->
+        if Instagram.media_duplicate?(profile.id, fingerprint) do
+          %{attrs: %{media_fingerprint: fingerprint}}
+        else
+          attrs =
+            profile
+            |> upload_thumbnail_bytes(story_id, thumbnail_url, download)
+            |> Map.put(:media_fingerprint, fingerprint)
+
+          %{attrs: attrs}
+        end
+
+      {:error, reason} ->
+        Logger.warning("Failed to fingerprint story thumbnail #{story_id}: #{inspect(reason)}")
+        %{attrs: upload_thumbnail_bytes(profile, story_id, thumbnail_url, download)}
+    end
+  end
+
+  defp upload_screenshot_bytes(profile, story_id, bytes) do
     subdirectory = Path.join("stories", profile.id)
     filename = "#{story_id}.png"
 
-    case Media.upload_image(Base.decode64!(base64), subdirectory, filename, content_type: "image/png") do
+    case Media.upload_image(bytes, subdirectory, filename, content_type: "image/png") do
       {:ok, result} ->
         upload_screenshot_attrs(result, story_id)
 
@@ -327,22 +432,28 @@ defmodule Instabot.Scraper.StoriesScraper do
     end
   end
 
-  defp upload_screenshot(profile, %{thumbnail_url: thumbnail_url, instagram_story_id: story_id})
-       when is_binary(thumbnail_url) and thumbnail_url != "" do
+  defp upload_thumbnail_bytes(profile, story_id, thumbnail_url, download) do
     subdirectory = Path.join("stories", profile.id)
     filename = thumbnail_filename(story_id, thumbnail_url)
 
-    case Media.download_and_upload(thumbnail_url, subdirectory, filename) do
+    case Media.upload_image(download.body, subdirectory, filename,
+           content_type: download.content_type,
+           public_id: Path.join(subdirectory, Path.rootname(filename))
+         ) do
       {:ok, result} ->
-        upload_screenshot_attrs(result, story_id)
+        result
+        |> Map.merge(%{
+          original_url: thumbnail_url,
+          content_type: download.content_type,
+          file_size: download.file_size
+        })
+        |> upload_screenshot_attrs(story_id)
 
       {:error, reason} ->
         Logger.warning("Failed to upload story thumbnail #{story_id}: #{inspect(reason)}")
         %{}
     end
   end
-
-  defp upload_screenshot(_profile, _story), do: %{}
 
   defp thumbnail_filename(story_id, thumbnail_url) do
     extension =

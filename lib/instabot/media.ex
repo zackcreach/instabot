@@ -56,6 +56,18 @@ defmodule Instabot.Media do
     end
   end
 
+  @spec download(String.t()) :: {:ok, map()} | {:error, term()}
+  def download(url) do
+    with {:ok, response} <- fetch(url) do
+      {:ok,
+       %{
+         body: response.body,
+         content_type: extract_content_type(response.headers, url),
+         file_size: byte_size(response.body)
+       }}
+    end
+  end
+
   @spec upload_image(binary(), String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def upload_image(bytes, subdirectory, filename, opts \\ []) when is_binary(bytes) do
     opts =

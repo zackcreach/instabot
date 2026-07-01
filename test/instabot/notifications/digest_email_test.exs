@@ -40,9 +40,13 @@ defmodule Instabot.Notifications.DigestEmailTest do
 
     email = build_email(context, %{posts: [post], stories: []})
 
-    assert email.html_body =~ ~s(src="http://localhost:4000/uploads/posts/image_0.jpg")
+    assert email.html_body =~ ~s(src="http://symphony:4002/uploads/posts/image_0.jpg")
+    assert email.html_body =~ ~s(href="http://symphony:4002/feed/posts/#{post.id}")
+    assert email.text_body =~ "http://symphony:4002/feed/posts/#{post.id}"
     assert email.html_body =~ ~s(alt="Instagram post preview")
     refute email.html_body =~ "https://example.com/fallback.jpg"
+    refute email.html_body =~ post.permalink
+    refute email.text_body =~ post.permalink
   end
 
   test "prefers Cloudinary post media previews in the html digest", context do
@@ -69,7 +73,8 @@ defmodule Instabot.Notifications.DigestEmailTest do
     email = build_email(context, %{posts: [post], stories: []})
 
     assert email.html_body =~ ~s(src="https://res.cloudinary.com/demo/image/upload/v1/posts/image_0.jpg")
-    refute email.html_body =~ "http://localhost:4000/uploads/posts/image_0.jpg"
+    assert email.html_body =~ ~s(href="http://symphony:4002/feed/posts/#{post.id}")
+    refute email.html_body =~ "http://symphony:4002/uploads/posts/image_0.jpg"
     refute email.html_body =~ "https://example.com/fallback.jpg"
   end
 
@@ -84,7 +89,9 @@ defmodule Instabot.Notifications.DigestEmailTest do
 
     email = build_email(context, %{posts: [], stories: [story]})
 
-    assert email.html_body =~ ~s(src="http://localhost:4000/screenshots/story.png")
+    assert email.html_body =~ ~s(src="http://symphony:4002/screenshots/story.png")
+    assert email.html_body =~ ~s(href="http://symphony:4002/feed/stories/#{story.id}")
+    assert email.text_body =~ "http://symphony:4002/feed/stories/#{story.id}"
     assert email.html_body =~ ~s(alt="Instagram story screenshot")
     refute email.html_body =~ "https://example.com/story.jpg"
   end
@@ -102,7 +109,8 @@ defmodule Instabot.Notifications.DigestEmailTest do
     email = build_email(context, %{posts: [], stories: [story]})
 
     assert email.html_body =~ ~s(src="https://res.cloudinary.com/demo/image/upload/v1/stories/story.png")
-    refute email.html_body =~ "http://localhost:4000/screenshots/story.png"
+    assert email.html_body =~ ~s(href="http://symphony:4002/feed/stories/#{story.id}")
+    refute email.html_body =~ "http://symphony:4002/screenshots/story.png"
     refute email.html_body =~ "https://example.com/story.jpg"
   end
 

@@ -12,6 +12,8 @@ defmodule Instabot.Instagram.ScrapeLog do
     field :status, :string, default: "started"
     field :posts_found, :integer, default: 0
     field :stories_found, :integer, default: 0
+    field :duplicate_posts_found, :integer, default: 0
+    field :duplicate_stories_found, :integer, default: 0
     field :error_message, :string
     field :started_at, :utc_datetime
     field :completed_at, :utc_datetime
@@ -28,6 +30,8 @@ defmodule Instabot.Instagram.ScrapeLog do
       :status,
       :posts_found,
       :stories_found,
+      :duplicate_posts_found,
+      :duplicate_stories_found,
       :error_message,
       :started_at,
       :completed_at

@@ -6,11 +6,13 @@ defmodule Instabot.Instagram do
   import Ecto.Query
 
   alias Instabot.Instagram.InstagramConnection
+  alias Instabot.Instagram.MediaFingerprint
   alias Instabot.Instagram.Post
   alias Instabot.Instagram.PostImage
   alias Instabot.Instagram.ScrapeLog
   alias Instabot.Instagram.Story
   alias Instabot.Instagram.TrackedProfile
+  alias Instabot.Media.Fingerprint
   alias Instabot.Repo
   alias Instabot.Stories.AdClassifier
 
@@ -159,9 +161,21 @@ defmodule Instabot.Instagram do
   def upsert_post_from_scrape(tracked_profile_id, attrs) do
     case get_post_by_instagram_id(tracked_profile_id, attrs[:instagram_post_id] || attrs["instagram_post_id"]) do
       nil ->
-        tracked_profile_id
-        |> create_post(attrs)
-        |> tag_post_result(:inserted)
+        case novel_media_fingerprints(tracked_profile_id, attrs[:media_fingerprints] || []) do
+          :no_fingerprints ->
+            with {:ok, post} <- create_post(tracked_profile_id, attrs) do
+              {:ok, post, :inserted}
+            end
+
+          [] ->
+            {:ok, nil, :duplicate}
+
+          media_fingerprints ->
+            with {:ok, post} <- create_post(tracked_profile_id, attrs) do
+              register_media_fingerprints(tracked_profile_id, :post, post.id, media_fingerprints)
+              {:ok, post, :inserted}
+            end
+        end
 
       %Post{} = post ->
         post
@@ -205,9 +219,16 @@ defmodule Instabot.Instagram do
   def upsert_story_from_scrape(tracked_profile_id, attrs) do
     case get_story_by_instagram_id(tracked_profile_id, attrs[:instagram_story_id] || attrs["instagram_story_id"]) do
       nil ->
-        tracked_profile_id
-        |> create_story(classify_story_attrs(attrs))
-        |> tag_story_result(:inserted)
+        case story_media_duplicate_status(tracked_profile_id, attrs) do
+          :duplicate ->
+            {:ok, nil, :duplicate}
+
+          :novel ->
+            with {:ok, story} <- create_story(tracked_profile_id, classify_story_attrs(attrs)) do
+              register_media_fingerprints(tracked_profile_id, :story, story.id, attrs[:media_fingerprint])
+              {:ok, story, :inserted}
+            end
+        end
 
       %Story{} = story ->
         story
@@ -294,6 +315,69 @@ defmodule Instabot.Instagram do
     |> Repo.update()
   end
 
+  def find_duplicate_media_fingerprint(tracked_profile_id, fingerprint, opts \\ [])
+
+  def find_duplicate_media_fingerprint(_tracked_profile_id, nil, _opts), do: nil
+
+  def find_duplicate_media_fingerprint(tracked_profile_id, fingerprint, opts) do
+    threshold = Keyword.get(opts, :hamming_threshold, Fingerprint.default_hamming_threshold())
+
+    exact_match =
+      Repo.get_by(MediaFingerprint,
+        tracked_profile_id: tracked_profile_id,
+        exact_sha256: fingerprint.exact_sha256
+      )
+
+    case exact_match do
+      %MediaFingerprint{} = media_fingerprint ->
+        media_fingerprint
+
+      nil ->
+        tracked_profile_id
+        |> list_media_fingerprints()
+        |> Enum.find(fn stored_fingerprint ->
+          Fingerprint.hamming_distance(stored_fingerprint.dhash, fingerprint.dhash) <= threshold
+        end)
+    end
+  end
+
+  def media_duplicate?(tracked_profile_id, fingerprint, opts \\ []) do
+    match?(%MediaFingerprint{}, find_duplicate_media_fingerprint(tracked_profile_id, fingerprint, opts))
+  end
+
+  def register_media_fingerprints(_tracked_profile_id, _source_kind, _source_id, nil), do: :ok
+
+  def register_media_fingerprints(tracked_profile_id, source_kind, source_id, fingerprints) when is_list(fingerprints) do
+    Enum.each(fingerprints, fn fingerprint ->
+      create_media_fingerprint(tracked_profile_id, source_kind, source_id, fingerprint)
+    end)
+
+    :ok
+  end
+
+  def register_media_fingerprints(tracked_profile_id, source_kind, source_id, fingerprint) do
+    register_media_fingerprints(tracked_profile_id, source_kind, source_id, [fingerprint])
+  end
+
+  def create_media_fingerprint(tracked_profile_id, source_kind, source_id, fingerprint) do
+    position = Map.get(fingerprint, :media_position, Map.get(fingerprint, :position, 0))
+
+    attrs = %{
+      tracked_profile_id: tracked_profile_id,
+      exact_sha256: fingerprint.exact_sha256,
+      dhash: fingerprint.dhash,
+      source_kind: source_kind_value(source_kind),
+      source_id: source_id,
+      media_position: position,
+      width: Map.get(fingerprint, :width),
+      height: Map.get(fingerprint, :height)
+    }
+
+    %MediaFingerprint{}
+    |> MediaFingerprint.changeset(attrs)
+    |> Repo.insert()
+  end
+
   def fail_scrape_log(%ScrapeLog{} = log, error_message) do
     log
     |> ScrapeLog.changeset(%{
@@ -316,6 +400,12 @@ defmodule Instabot.Instagram do
     Repo.get_by(Story, tracked_profile_id: tracked_profile_id, instagram_story_id: instagram_story_id)
   end
 
+  defp list_media_fingerprints(tracked_profile_id) do
+    MediaFingerprint
+    |> where(tracked_profile_id: ^tracked_profile_id)
+    |> Repo.all()
+  end
+
   defp scrape_interval_label(30), do: "30 minutes"
   defp scrape_interval_label(60), do: "1 hour"
   defp scrape_interval_label(360), do: "6 hours"
@@ -335,6 +425,22 @@ defmodule Instabot.Instagram do
       Map.merge(attrs, AdClassifier.classify(attrs))
     end
   end
+
+  defp story_media_duplicate_status(tracked_profile_id, attrs) do
+    case attrs[:media_fingerprint] do
+      nil -> :novel
+      fingerprint -> if media_duplicate?(tracked_profile_id, fingerprint), do: :duplicate, else: :novel
+    end
+  end
+
+  defp novel_media_fingerprints(_tracked_profile_id, []), do: :no_fingerprints
+
+  defp novel_media_fingerprints(tracked_profile_id, fingerprints) do
+    Enum.reject(fingerprints, &media_duplicate?(tracked_profile_id, &1))
+  end
+
+  defp source_kind_value(source_kind) when is_atom(source_kind), do: Atom.to_string(source_kind)
+  defp source_kind_value(source_kind), do: source_kind
 
   defp scrape_update_attrs(record, attrs) do
     attrs

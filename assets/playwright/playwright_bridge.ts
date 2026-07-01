@@ -162,6 +162,7 @@ async function handleNavigate(state: BridgeState, params: JsonObject): Promise<J
 async function handleScreenshot(state: BridgeState, params: JsonObject): Promise<JsonObject> {
   const page = getPage(state, params.page_id)
   const buffer = await page.screenshot({
+    clip: isClip(params.clip) ? params.clip : undefined,
     fullPage: params.full_page === true,
     path: typeof params.path === "string" ? params.path : undefined
   })
@@ -305,6 +306,21 @@ function isViewport(value: unknown): value is {height: number; width: number} {
     "width" in value &&
     typeof value.height === "number" &&
     typeof value.width === "number"
+  )
+}
+
+function isClip(value: unknown): value is {height: number; width: number; x: number; y: number} {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "height" in value &&
+    "width" in value &&
+    "x" in value &&
+    "y" in value &&
+    typeof value.height === "number" &&
+    typeof value.width === "number" &&
+    typeof value.x === "number" &&
+    typeof value.y === "number"
   )
 }
 

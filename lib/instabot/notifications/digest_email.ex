@@ -37,7 +37,7 @@ defmodule Instabot.Notifications.DigestEmail do
 
   defp build_unsubscribe_url(user_id) do
     token = unsubscribe_token(user_id)
-    InstabotWeb.Endpoint.url() <> "/unsubscribe/#{token}"
+    app_url("/unsubscribe/#{token}")
   end
 
   defp build_subject(0, story_count), do: "Instabot: #{story_count} new #{pluralize(story_count, "story", "stories")}"
@@ -76,10 +76,12 @@ defmodule Instabot.Notifications.DigestEmail do
 
     items =
       Enum.map(posts, fn post ->
+        post_url = post_url(post)
+
         lines = [
           "@#{post.tracked_profile.instagram_username} · #{post.post_type}",
           post.caption && "  #{String.slice(post.caption, 0, 200)}",
-          post.permalink && "  #{post.permalink}",
+          post_url && "  #{post_url}",
           (preference.include_images and post.media_urls != []) &&
             "  Images: #{length(post.media_urls)}"
         ]
@@ -97,8 +99,11 @@ defmodule Instabot.Notifications.DigestEmail do
 
     items =
       Enum.map(stories, fn story ->
+        story_url = story_url(story)
+
         lines = [
           "@#{story.tracked_profile.instagram_username} · #{story.story_type}",
+          story_url && "  #{story_url}",
           text_story_ocr_line(story, preference)
         ]
 
@@ -188,6 +193,7 @@ defmodule Instabot.Notifications.DigestEmail do
           |> Enum.reject(&is_nil/1)
 
         image_grid = html_media_grid(media_urls, preference)
+        post_url = post_url(post)
 
         caption_line =
           if post.caption && post.caption != "" do
@@ -197,9 +203,9 @@ defmodule Instabot.Notifications.DigestEmail do
             ""
           end
 
-        permalink_line =
-          if post.permalink do
-            "<p style=\"margin:6px 0 0;\"><a href=\"#{post.permalink}\" style=\"color:#6366f1;font-size:13px;text-decoration:none;\">View on Instagram →</a></p>"
+        post_link =
+          if post_url do
+            "<p style=\"margin:6px 0 0;\"><a href=\"#{post_url}\" style=\"color:#6366f1;font-size:13px;text-decoration:none;\">View in Instabot →</a></p>"
           else
             ""
           end
@@ -212,7 +218,7 @@ defmodule Instabot.Notifications.DigestEmail do
           </p>
           #{image_grid}
           #{caption_line}
-          #{permalink_line}
+          #{post_link}
         </div>
         """
       end)
@@ -240,6 +246,7 @@ defmodule Instabot.Notifications.DigestEmail do
           |> absolute_media_url()
 
         preview = html_story_preview(preview_url, preference)
+        story_link = html_story_link(story)
 
         ocr_line = html_story_ocr_line(story, preference)
 
@@ -250,6 +257,7 @@ defmodule Instabot.Notifications.DigestEmail do
             <span style="font-weight:400;color:#a1a1aa;margin-left:6px;">#{html_escape(story.story_type)}</span>
           </p>
           #{preview}
+          #{story_link}
           #{ocr_line}
         </div>
         """
@@ -350,8 +358,32 @@ defmodule Instabot.Notifications.DigestEmail do
     |> absolute_url()
   end
 
-  defp absolute_url("/" <> _ = path), do: InstabotWeb.Endpoint.url() <> path
+  defp absolute_url("/" <> _ = path), do: app_url(path)
   defp absolute_url(url), do: url
+
+  defp post_url(%{id: id}) when is_binary(id), do: app_url("/feed/posts/#{id}")
+  defp post_url(_post), do: nil
+
+  defp story_url(%{id: id}) when is_binary(id), do: app_url("/feed/stories/#{id}")
+  defp story_url(_story), do: nil
+
+  defp html_story_link(story) do
+    case story_url(story) do
+      nil ->
+        ""
+
+      url ->
+        "<p style=\"margin:8px 0 0;\"><a href=\"#{url}\" style=\"color:#6366f1;font-size:13px;text-decoration:none;\">View in Instabot →</a></p>"
+    end
+  end
+
+  defp app_url(path), do: email_base_url() <> path
+
+  defp email_base_url do
+    :instabot
+    |> Application.get_env(:email_base_url, "http://symphony:4002")
+    |> String.trim_trailing("/")
+  end
 
   defp format_datetime(%DateTime{} = datetime) do
     datetime

@@ -9,6 +9,8 @@ defmodule Instabot.Scraper.PostsScraper do
   alias Instabot.Instagram.Events
   alias Instabot.Instagram.InstagramConnection
   alias Instabot.Instagram.TrackedProfile
+  alias Instabot.Media
+  alias Instabot.Media.Fingerprint
   alias Instabot.Scraper.AntiDetection
   alias Instabot.Scraper.Browser
   alias Instabot.Scraper.Parser
@@ -68,9 +70,9 @@ defmodule Instabot.Scraper.PostsScraper do
          {:ok, %{posts: posts, profile_metadata: profile_metadata}} <-
            scrape(profile.instagram_username, session_data, opts) do
       update_profile_metadata(profile, profile_metadata)
-      persisted_count = persist_posts(profile, posts)
+      %{persisted_count: persisted_count, duplicate_count: duplicate_count} = persist_posts(profile, posts)
       Instagram.update_last_scraped(profile)
-      Instagram.complete_scrape_log(log, %{posts_found: persisted_count})
+      Instagram.complete_scrape_log(log, %{posts_found: persisted_count, duplicate_posts_found: duplicate_count})
     else
       {:error, reason} = error ->
         Instagram.fail_scrape_log(log, inspect(reason))
@@ -159,19 +161,133 @@ defmodule Instabot.Scraper.PostsScraper do
   end
 
   defp persist_posts(profile, posts) do
-    Enum.count(posts, fn post_attrs ->
-      case Instagram.upsert_post_from_scrape(profile.id, post_attrs) do
+    Enum.reduce(posts, %{persisted_count: 0, duplicate_count: 0}, fn post_attrs, acc ->
+      prepared_post = prepare_post_media(profile, post_attrs)
+
+      case Instagram.upsert_post_from_scrape(profile.id, prepared_post.attrs) do
         {:ok, post, status} when status in [:inserted, :updated] ->
+          create_post_images(post, prepared_post.media)
           Events.broadcast_post_created(profile, post)
-          true
+          %{acc | persisted_count: acc.persisted_count + 1}
 
         {:ok, _post, :unchanged} ->
-          false
+          acc
+
+        {:ok, nil, :duplicate} ->
+          %{acc | duplicate_count: acc.duplicate_count + 1}
 
         {:error, _changeset} ->
-          false
+          acc
       end
     end)
+  end
+
+  defp prepare_post_media(profile, %{media_urls: media_urls} = post_attrs) when is_list(media_urls) do
+    media =
+      media_urls
+      |> Enum.reject(&blank?/1)
+      |> Enum.with_index()
+      |> Enum.map(fn {url, position} -> prepare_media_item(profile, url, position) end)
+      |> Enum.reject(&is_nil/1)
+
+    novel_media = Enum.reject(media, &Instagram.media_duplicate?(profile.id, &1.fingerprint))
+
+    cond do
+      media == [] ->
+        %{attrs: post_attrs, media: []}
+
+      novel_media == [] ->
+        %{attrs: Map.put(post_attrs, :media_fingerprints, media_fingerprints(media)), media: []}
+
+      true ->
+        attrs =
+          post_attrs
+          |> Map.put(:media_urls, Enum.map(novel_media, & &1.url))
+          |> Map.put(:media_fingerprints, media_fingerprints(novel_media))
+
+        %{attrs: attrs, media: upload_post_media(profile, novel_media)}
+    end
+  end
+
+  defp prepare_post_media(_profile, post_attrs), do: %{attrs: post_attrs, media: []}
+
+  defp prepare_media_item(profile, url, position) do
+    with {:ok, download} <- Media.download(url),
+         {:ok, fingerprint} <- Fingerprint.from_bytes(download.body) do
+      %{
+        url: url,
+        position: position,
+        bytes: download.body,
+        content_type: download.content_type,
+        file_size: download.file_size,
+        fingerprint: Map.put(fingerprint, :media_position, position),
+        profile: profile
+      }
+    else
+      {:error, reason} ->
+        Logger.warning("Failed to fingerprint post media #{url}: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  defp upload_post_media(profile, media) do
+    media
+    |> Enum.map(&upload_post_media_item(profile, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp upload_post_media_item(profile, media) do
+    subdirectory = Path.join("posts", profile.id)
+    filename = post_media_filename(media.position, media.url)
+
+    case Media.upload_image(media.bytes, subdirectory, filename,
+           content_type: media.content_type,
+           public_id: Path.join(subdirectory, Path.rootname(filename))
+         ) do
+      {:ok, upload} ->
+        Map.put(media, :upload, upload)
+
+      {:error, reason} ->
+        Logger.warning("Failed to upload post media #{media.url}: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  defp create_post_images(post, media) do
+    Enum.each(media, fn item ->
+      upload = item.upload
+
+      Instagram.create_post_image(post.id, %{
+        original_url: item.url,
+        local_path: upload[:local_path],
+        position: item.position,
+        content_type: item.content_type,
+        file_size: item.file_size,
+        cloudinary_public_id: upload[:cloudinary_public_id],
+        cloudinary_secure_url: upload[:cloudinary_secure_url],
+        cloudinary_version: upload[:cloudinary_version],
+        cloudinary_format: upload[:cloudinary_format],
+        cloudinary_resource_type: upload[:cloudinary_resource_type],
+        width: upload[:width],
+        height: upload[:height]
+      })
+    end)
+  end
+
+  defp media_fingerprints(media), do: Enum.map(media, & &1.fingerprint)
+
+  defp post_media_filename(position, url) do
+    extension =
+      url
+      |> URI.parse()
+      |> Map.get(:path, "")
+      |> Path.extname()
+      |> String.downcase()
+
+    case extension do
+      "" -> "image_#{position}.jpg"
+      value -> "image_#{position}#{value}"
+    end
   end
 
   defp update_profile_metadata(profile, metadata) do
@@ -185,4 +301,7 @@ defmodule Instabot.Scraper.PostsScraper do
       _ -> {:ok, profile}
     end
   end
+
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_value), do: true
 end

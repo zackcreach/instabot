@@ -34,7 +34,9 @@ export function createMockBridgeHandlers(environment: NodeJS.ProcessEnv = proces
     },
     navigate: params => ({title: "Mock Page", url: params.url}),
     new_page: () => ({page_id: "mock_page_1"}),
-    screenshot: () => ({base64: Buffer.from("fake_png_data").toString("base64")}),
+    screenshot: params => ({
+      base64: Buffer.from(params.clip ? "fake_clipped_png_data" : "fake_png_data").toString("base64")
+    }),
     set_cookies: () => ({}),
     type: () => ({}),
     wait_for_selector: () => ({})

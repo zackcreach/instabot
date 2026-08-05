@@ -39,14 +39,14 @@ services:
       start_period: 40s
 
   db:
-    image: postgres:16-alpine
+    image: postgres:18.4-alpine
     container_name: instabot_db
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=instabot_prod
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - instabot_postgres18_data:/var/lib/postgresql
     restart: unless-stopped
     networks:
       - instabot_network
@@ -57,7 +57,8 @@ services:
       retries: 5
 
 volumes:
-  postgres_data:
+  instabot_postgres18_data:
+    name: instabot_postgres18_data
     driver: local
   uploads_data:
     driver: local

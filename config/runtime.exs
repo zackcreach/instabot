@@ -97,6 +97,8 @@ if config_env() == :prod do
     |> System.get_env("#{scheme}://#{host}:#{url_port}")
     |> String.split(",", trim: true)
 
+  email_base_url = System.get_env("INSTABOT_BASE_URL", "#{scheme}://#{host}:#{url_port}")
+
   mailgun_api_key =
     System.get_env("MAILGUN_API_KEY") ||
       raise "environment variable MAILGUN_API_KEY is missing."
@@ -165,5 +167,6 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :instabot, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  config :instabot, :email_base_url, email_base_url
   config :instabot, :from_email, from_email
 end

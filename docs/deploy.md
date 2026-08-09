@@ -1,58 +1,39 @@
-# Instabot Deployment
+# Symphony Deployment
 
-Instabot deploys to Symphony with the same Docker plus NixOS pattern used by Whiteboard and Quench.
+Instabot is an immutable Nix Mix release managed by `instabot-native.service`. Nix packages its Node bridge and matching Chromium runtime. Uploads and screenshots live under `/var/lib/instabot`, and the application connects to NixOS-managed PostgreSQL 18.4 through `/run/postgresql`.
 
-## Runtime
+## Deploy
 
-- App: `instabot`
-- Database: `instabot_db`
-- Port: `4002`
-- Health check: `http://symphony:4002/health`
-- Repo path on Symphony: `/home/zack/dev/instabot`
-- Env file on Symphony: `/home/zack/dev/instabot/.env`
+Push the application commit, then update and activate its pinned input from `/etc/nixos`:
 
-## Required Environment
-
-Create `/home/zack/dev/instabot/.env` on Symphony:
-
-```sh
-SECRET_KEY_BASE=<mix phx.gen.secret>
-MAILGUN_API_KEY=<mailgun-api-key>
-MAILGUN_DOMAIN=<mailgun-domain>
-MAILGUN_FROM_EMAIL=<from-address>
-GITHUB_TOKEN=<github-token>
-CLOUDINARY_CLOUD_NAME=<cloud-name>
-CLOUDINARY_API_KEY=<api-key>
-CLOUDINARY_API_SECRET=<api-secret>
-CLOUDINARY_FOLDER=instabot/prod
-```
-
-`docker-compose.yml` loads this file with `env_file`. It also provides the default production `DATABASE_URL`, `PORT`, `PHX_HOST`, scraper bridge path, uploads path, screenshots path, and Playwright browser path.
-
-## First Deploy
-
-```sh
-cd /home/zack/dev/nixos
+```bash
+nix flake update instabot
+nix build .#nixosConfigurations.symphony.config.system.build.toplevel
 sudo nixos-rebuild switch --flake .#symphony
-
-cd /home/zack/dev
-git clone <instabot-repo-url> instabot
-cd /home/zack/dev/instabot
-nano .env
-
-sudo systemctl start instabot
-sudo systemctl start instabot-deploy
-curl http://symphony:4002/health
 ```
 
-## Manual Operations
+The systemd dependency runs `instabot-native-migrate.service` before the application starts.
 
-```sh
-mix deploy
-mix deploy --force
-docker compose ps
-docker compose logs instabot -f
-docker exec -it instabot /app/bin/instabot remote
-docker exec -it instabot_db psql -U postgres -d instabot_prod
-sudo systemctl start instabot-backup
+## Operations
+
+```bash
+systemctl status instabot-native
+journalctl -u instabot-native --follow
+sudo systemctl restart instabot-native
+curl --fail https://instabot.prominent.tools/health
 ```
+
+## Database and backups
+
+```bash
+sudo -u postgres psql instabot_prod
+systemctl status postgresqlBackup-instabot_prod.timer
+sudo systemctl start postgresqlBackup-instabot_prod.service
+journalctl -u postgresqlBackup-instabot_prod.service
+```
+
+Backups are compressed SQL dumps under `/var/backup/postgresql/symphony` on Biltmore. Restore tests must use an isolated database.
+
+## State and rollback
+
+Systemd owns `/var/lib/instabot/uploads` and `/var/lib/instabot/screenshots`. Use the previous NixOS generation for an application rollback. Pre-cutover Docker database and media volumes remain available only during the temporary migration rollback window.

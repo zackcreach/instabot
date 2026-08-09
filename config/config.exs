@@ -11,6 +11,8 @@ config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 # Configure esbuild (the version is required)
 config :esbuild,
+  path: System.get_env("MIX_ESBUILD_PATH"),
+  version_check: System.get_env("MIX_ESBUILD_PATH") == nil,
   version: "0.25.4",
   instabot: [
     args:
@@ -96,6 +98,7 @@ config :phoenix, :json_library, Jason
 
 # Configure tailwind (the version is required)
 config :tailwind,
+  path: System.get_env("MIX_TAILWIND_PATH"),
   version: "4.1.12",
   instabot: [
     args: ~w(
@@ -107,5 +110,7 @@ config :tailwind,
     # of this file so it overrides the configuration defined above.
     cd: Path.expand("..", __DIR__)
   ]
+
+config :tzdata, :autoupdate, :disabled
 
 import_config "#{config_env()}.exs"

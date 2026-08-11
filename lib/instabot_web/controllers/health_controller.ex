@@ -8,8 +8,8 @@ defmodule InstabotWeb.HealthController do
 
       {:error, _} ->
         conn
-        |> put_status(503)
-        |> json(%{status: "error", reason: "database unavailable"})
+        |> put_status(:service_unavailable)
+        |> json(%{status: "error"})
     end
   end
 end

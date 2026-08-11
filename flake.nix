@@ -60,6 +60,7 @@
           postInstall = ''
             mkdir -p $out/share/instabot
             cp -r ${runtimeAssets} $out/share/instabot/assets
+            ln -s ${pkgs.playwright-driver.browsers} $out/share/instabot/playwright-browsers
           '';
         };
 

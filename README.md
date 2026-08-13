@@ -1,25 +1,12 @@
 # Instabot
 
-To start your Phoenix server with a local PostgreSQL server running:
+## Development
 
 ```bash
-nix develop
-mix setup
-iex -S mix phx.server
+nix develop -c mix setup
+nix develop -c iex -S mix phx.server
 ```
 
-The Nix development shell provides the pinned Erlang, Elixir, Node, PostgreSQL client, Playwright browsers, ImageMagick, and Tesseract tooling on Linux and Darwin.
+The Nix shell starts a checkout-private PostgreSQL 18 server under `.direnv/postgresql-18` and supplies Chromium to Playwright without a browser download. Use `PORT=<port> nix develop -c iex -S mix phx.server` for another session. `nix develop -c dev-postgres status` and `nix develop -c dev-postgres stop` provide lifecycle control. `DATABASE_URL` or `DATABASE_SOCKET_DIR` uses an external database instead.
 
-Without Nix, use [`flake.nix`](flake.nix) as the source of truth for tool versions and install matching Erlang, Elixir, Node, PostgreSQL, Playwright, ImageMagick, and Tesseract tooling with mise, asdf, or equivalent tooling before running `mix setup`.
-
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
-
-Instabot is built as an immutable Nix Mix release and runs as `instabot-native.service` on Symphony. See [the deployment guide](docs/deploy.md) for deployment and operations.
-
-## Learn more
-
-* Official website: https://www.phoenixframework.org/
-* Guides: https://hexdocs.pm/phoenix/overview.html
-* Docs: https://hexdocs.pm/phoenix
-* Forum: https://elixirforum.com/c/phoenix-forum
-* Source: https://github.com/phoenixframework/phoenix
+Docker Compose is for container and release verification, not normal local development.

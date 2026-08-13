@@ -1,5 +1,9 @@
 This is a web application written using the Phoenix web framework.
 
+## Local development
+
+Use `nix develop -c mix setup` for a first checkout and `nix develop -c iex -S mix phx.server` for normal sessions. The Nix shell owns PostgreSQL 18 in `.direnv/postgresql-18`, including Chromium for Playwright; use `nix develop -c dev-postgres status|stop` for lifecycle control. Docker Compose is only for container/release verification.
+
 ## Project guidelines
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues

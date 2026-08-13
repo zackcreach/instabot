@@ -8,6 +8,7 @@ erl_crash.dump
 *.beam
 /config/*.secret.exs
 .elixir_ls/
+/.direnv/
 /assets/node_modules/
 /assets/coverage/
 /assets/playwright/dist/

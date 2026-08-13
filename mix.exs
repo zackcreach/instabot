@@ -5,7 +5,7 @@ defmodule Instabot.MixProject do
     [
       app: :instabot,
       version: "0.1.0",
-      elixir: "~> 1.15",
+      elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       test_paths: ["lib"],
       start_permanent: Mix.env() == :prod,

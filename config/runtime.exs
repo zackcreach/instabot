@@ -39,6 +39,12 @@ scraper_config =
   end
 
 scraper_config =
+  case System.get_env("INSTABOT_CHROMIUM_EXECUTABLE_PATH") do
+    nil -> scraper_config
+    executable_path -> Keyword.put(scraper_config, :chromium_executable_path, executable_path)
+  end
+
+scraper_config =
   case System.get_env("INSTABOT_SCREENSHOT_DIR") do
     nil -> scraper_config
     screenshot_dir -> Keyword.put(scraper_config, :screenshot_dir, screenshot_dir)
@@ -68,19 +74,12 @@ if config_env() == :prod do
   cloudinary_folder = System.get_env("CLOUDINARY_FOLDER", "instabot/#{config_env()}")
 
   database_options =
-    case System.get_env("DATABASE_SOCKET_DIR") do
-      nil ->
-        database_url =
-          System.get_env("DATABASE_URL") ||
-            raise """
-            environment variable DATABASE_URL is missing.
-            For example: ecto://USER:PASS@HOST/DATABASE
-            """
-
+    case {System.get_env("DATABASE_URL"), System.get_env("DATABASE_SOCKET_DIR")} do
+      {database_url, _socket_dir} when database_url not in [nil, ""] ->
         maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
         [url: database_url, socket_options: maybe_ipv6]
 
-      socket_dir ->
+      {_database_url, socket_dir} when socket_dir not in [nil, ""] ->
         username =
           System.get_env("DATABASE_USERNAME") ||
             raise "environment variable DATABASE_USERNAME is required with DATABASE_SOCKET_DIR."
@@ -90,6 +89,9 @@ if config_env() == :prod do
             raise "environment variable DATABASE_NAME is required with DATABASE_SOCKET_DIR."
 
         [socket_dir: socket_dir, username: username, database: database]
+
+      _external_database ->
+        raise "DATABASE_URL or DATABASE_SOCKET_DIR is required."
     end
 
   # The secret key base is used to sign/encrypt cookies and other secrets.

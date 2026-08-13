@@ -1,14 +1,14 @@
 import Config
 
-# Configure your database
+database_config =
+  case {System.get_env("DATABASE_URL"), System.get_env("DATABASE_SOCKET_DIR")} do
+    {database_url, _socket_dir} when database_url not in [nil, ""] -> [url: database_url]
+    {_database_url, socket_dir} when socket_dir not in [nil, ""] -> [socket_dir: socket_dir, username: System.get_env("DATABASE_USERNAME") || "postgres", database: System.get_env("DATABASE_NAME") || "instabot_dev"]
+    _external_database -> [username: "postgres", password: "postgres", hostname: "localhost", database: "instabot_dev"]
+  end
+
 config :instabot, Instabot.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  database: "instabot_dev",
-  stacktrace: true,
-  show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  database_config ++ [stacktrace: true, show_sensitive_data_on_connection_error: true, pool_size: 10]
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

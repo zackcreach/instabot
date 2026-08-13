@@ -6,18 +6,15 @@ config :bcrypt_elixir, :log_rounds, 1
 # In test we don't send emails
 config :instabot, Instabot.Mailer, adapter: Swoosh.Adapters.Test
 
-# Configure your database
-#
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
+database_config =
+  case {System.get_env("DATABASE_URL"), System.get_env("DATABASE_SOCKET_DIR")} do
+    {database_url, _socket_dir} when database_url not in [nil, ""] -> [url: database_url]
+    {_database_url, socket_dir} when socket_dir not in [nil, ""] -> [socket_dir: socket_dir, username: System.get_env("DATABASE_USERNAME") || "postgres", database: System.get_env("DATABASE_NAME") || "instabot_test#{System.get_env("MIX_TEST_PARTITION")}"]
+    _external_database -> [username: "postgres", password: "postgres", hostname: "localhost", database: "instabot_test#{System.get_env("MIX_TEST_PARTITION")}"]
+  end
+
 config :instabot, Instabot.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  database: "instabot_test#{System.get_env("MIX_TEST_PARTITION")}",
-  pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+  database_config ++ [pool: Ecto.Adapters.SQL.Sandbox, pool_size: System.schedulers_online() * 2]
 
 config :instabot, Instabot.Scraper,
   playwright_path: Path.expand("../assets/playwright", __DIR__),

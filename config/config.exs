@@ -99,6 +99,7 @@ config :phoenix, :json_library, Jason
 # Configure tailwind (the version is required)
 config :tailwind,
   path: System.get_env("MIX_TAILWIND_PATH"),
+  version_check: System.get_env("MIX_TAILWIND_PATH") == nil,
   version: "4.1.12",
   instabot: [
     args: ~w(

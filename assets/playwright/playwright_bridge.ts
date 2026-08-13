@@ -56,6 +56,7 @@ async function handleLaunch(state: BridgeState, params: JsonObject): Promise<Jso
 
   state.browser = await chromium.launch({
     args: [...defaultArgs, ...paramsArgs],
+    executablePath: process.env.INSTABOT_CHROMIUM_EXECUTABLE_PATH,
     headless: params.headless !== false
   })
 

@@ -1,17 +1,27 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/master";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    deploy-rs.url = "github:serokell/deploy-rs";
+    deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { nixpkgs, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      deploy-rs,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
-        inherit (pkgs.lib) optionalAttrs optionals;
-        beamPackages = pkgs.beamMinimal29Packages.extend (_final: previous: {
-          elixir = previous.elixir_1_20;
-        });
+        beamPackages = pkgs.beamMinimal27Packages.extend (
+          _final: previous: {
+            elixir = previous.elixir_1_20;
+          }
+        );
         version = "0.1.0";
         src = ./.;
         runtimeAssets = pkgs.buildNpmPackage {
@@ -42,7 +52,7 @@
         };
         devPostgres = pkgs.writeShellApplication {
           name = "dev-postgres";
-          runtimeInputs = [ pkgs.postgresql_18_jit ];
+          runtimeInputs = [ pkgs.postgresql_18 ];
           text = ''
             root_dir="''${DEV_POSTGRES_ROOT_DIR:-$PWD/.direnv/postgresql-18}"
             data_dir="$root_dir/data"
@@ -58,12 +68,20 @@
                 if pg_ctl --pgdata="$data_dir" status >/dev/null 2>&1; then
                   echo "PostgreSQL is already running"
                 else
-                  pg_ctl --pgdata="$data_dir" --log="$data_dir/postgresql.log" --options="-c listen_addresses= -c unix_socket_directories='$socket_dir'" start
+                  pg_ctl --pgdata="$data_dir" --log="$data_dir/postgresql.log" \
+                    --options="-c listen_addresses= -c unix_socket_directories='$socket_dir'" start
                 fi
                 ;;
-              stop) pg_ctl --pgdata="$data_dir" stop ;;
-              status) pg_ctl --pgdata="$data_dir" status ;;
-              *) echo "Usage: dev-postgres start|stop|status" >&2; exit 2 ;;
+              stop)
+                pg_ctl --pgdata="$data_dir" stop
+                ;;
+              status)
+                pg_ctl --pgdata="$data_dir" status
+                ;;
+              *)
+                echo "Usage: dev-postgres start|stop|status" >&2
+                exit 2
+                ;;
             esac
           '';
         };
@@ -81,49 +99,65 @@
             mkdir -p $out/share/instabot
             cp -r ${runtimeAssets} $out/share/instabot/assets
             ln -s ${pkgs.playwright-driver.browsers} $out/share/instabot/playwright-browsers
+            mkdir -p $out/share/prominent-tools
+            printf '%s\n' '${self.rev or self.dirtyRev or "0000000000000000000000000000000000000000"}' > $out/share/prominent-tools/revision
           '';
         };
 
-        devShells.default = pkgs.mkShell ({
-          packages = [
+        packages.deploy-rs = deploy-rs.packages.${system}.default;
+
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
             beamPackages.elixir
-            beamPackages.expert
-            pkgs.nodejs_24
-            pkgs.typescript-language-server
-            pkgs.prettier
-            pkgs.postgresql_18_jit
+            pkg-config
+            imagemagick
+            nodejs
+            playwright-driver.browsers
+            postgresql_18
             devPostgres
-            pkgs.esbuild
-            pkgs.tailwindcss_4
-            pkgs.pkg-config
-            pkgs.imagemagick
-            pkgs.tesseract
-            pkgs.glibcLocales
-          ] ++ optionals pkgs.stdenv.hostPlatform.isLinux [
-            pkgs.chromium
-            pkgs.inotify-tools
-          ] ++ optionals pkgs.stdenv.hostPlatform.isDarwin [
-            pkgs.terminal-notifier
+            esbuild
+            tailwindcss_4
+            tesseract
           ];
-          MIX_ESBUILD_PATH = "${pkgs.esbuild}/bin/esbuild";
-          MIX_TAILWIND_PATH = "${pkgs.tailwindcss_4}/bin/tailwindcss";
+
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
           PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = true;
+          MIX_ESBUILD_PATH = "${pkgs.esbuild}/bin/esbuild";
+          MIX_TAILWIND_PATH = "${pkgs.tailwindcss_4}/bin/tailwindcss";
+
           shellHook = ''
             export LANG="''${LANG:-en_US.UTF-8}"
             export LC_ALL="''${LC_ALL:-en_US.UTF-8}"
             if [[ -z "''${DATABASE_URL:-}" && -z "''${DATABASE_SOCKET_DIR:-}" ]]; then
               export DEV_POSTGRES_ROOT_DIR="$PWD/.direnv/postgresql-18"
               export DATABASE_SOCKET_DIR="$DEV_POSTGRES_ROOT_DIR/socket"
-              export DATABASE_USERNAME=postgres
+              export DATABASE_USERNAME="postgres"
               export PGHOST="$DATABASE_SOCKET_DIR"
               export PGUSER="$DATABASE_USERNAME"
               dev-postgres start
             fi
           '';
-        } // optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-          INSTABOT_CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
-        });
+        };
+
+        devShell = self.devShells.${system}.default;
       }
-    );
+    )
+    // {
+      deploy.nodes.symphony = {
+        hostname = "symphony";
+        sshUser = "prominent-deploy";
+        sshOpts = [
+          "-o"
+          "StrictHostKeyChecking=accept-new"
+        ];
+        remoteBuild = true;
+        profiles.instabot = {
+          user = "prominent-deploy";
+          profilePath = "/nix/var/nix/profiles/per-user/prominent-deploy/instabot";
+          path = deploy-rs.lib.x86_64-linux.activate.custom self.packages.x86_64-linux.default "sudo /run/current-system/sw/bin/prominent-tools-activate instabot";
+        };
+      };
+
+      checks.x86_64-linux = deploy-rs.lib.x86_64-linux.deployChecks self.deploy;
+    };
 }

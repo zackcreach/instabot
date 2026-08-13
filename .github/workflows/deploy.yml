@@ -1,0 +1,93 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Signed revision reachable from main
+        required: false
+        type: string
+      retry_blocked:
+        description: Retry a blocked revision
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "37 6 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: instabot-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858
+
+      - name: Connect to tailnet
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8
+        with:
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:github-instabot-production
+
+      - name: Deploy signed revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANUAL_REVISION: ${{ inputs.revision }}
+          RETRY_BLOCKED: ${{ inputs.retry_blocked }}
+        run: |
+          set -euo pipefail
+          if ! tailscale ping --timeout=10s symphony >/dev/null 2>&1; then
+            echo "Symphony is unreachable; daily reconciliation will retry"
+            exit 0
+          fi
+          target_revision="${MANUAL_REVISION:-${GITHUB_SHA}}"
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+            target_revision="$(git rev-parse origin/main)"
+          else
+            target_revision="$(git rev-parse "${target_revision}^{commit}")"
+          fi
+          deployment_phase="authentication"
+          notify_failure() {
+            exit_status="$?"
+            trap - ERR
+            ssh -o StrictHostKeyChecking=accept-new prominent-deploy@symphony sudo /run/current-system/sw/bin/prominent-tools-activate instabot notify "$target_revision" "$deployment_phase" "Instabot deployment failed during $deployment_phase" || true
+            exit "$exit_status"
+          }
+          trap notify_failure ERR
+          git merge-base --is-ancestor "$target_revision" origin/main
+          verification="$(curl --fail --silent --show-error --header "Authorization: Bearer $GH_TOKEN" --header "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${target_revision}" | jq --raw-output '.commit.verification.verified')"
+          [[ "$verification" == "true" ]]
+          retry_mode="normal"
+          if [[ "$RETRY_BLOCKED" == "true" ]]; then
+            retry_mode="force"
+          fi
+          set +e
+          ssh -o StrictHostKeyChecking=accept-new prominent-deploy@symphony sudo /run/current-system/sw/bin/prominent-tools-activate instabot status "$target_revision" "$retry_mode"
+          status_result="$?"
+          set -e
+          if [[ "$status_result" == 10 ]]; then
+            trap - ERR
+            exit 0
+          fi
+          [[ "$status_result" == 0 ]]
+          git checkout --detach "$target_revision"
+          deployment_phase="build"
+          nix run .#deploy-rs -- .#symphony.instabot
+          trap - ERR

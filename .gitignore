@@ -2,6 +2,7 @@
 /cover
 /deps
 /doc
+/.direnv/
 /.fetch
 erl_crash.dump
 *.ez

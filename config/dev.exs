@@ -1,14 +1,35 @@
 import Config
 
+port = String.to_integer(System.get_env("PORT") || "5002")
+
 database_config =
   case {System.get_env("DATABASE_URL"), System.get_env("DATABASE_SOCKET_DIR")} do
-    {database_url, _socket_dir} when database_url not in [nil, ""] -> [url: database_url]
-    {_database_url, socket_dir} when socket_dir not in [nil, ""] -> [socket_dir: socket_dir, username: System.get_env("DATABASE_USERNAME") || "postgres", database: System.get_env("DATABASE_NAME") || "instabot_dev"]
-    _external_database -> [username: "postgres", password: "postgres", hostname: "localhost", database: "instabot_dev"]
+    {database_url, _socket_dir} when database_url not in [nil, ""] ->
+      [url: database_url]
+
+    {_database_url, socket_dir} when socket_dir not in [nil, ""] ->
+      [
+        socket_dir: socket_dir,
+        username: System.get_env("DATABASE_USERNAME") || "postgres",
+        database: System.get_env("DATABASE_NAME") || "instabot_dev"
+      ]
+
+    _external_database ->
+      [
+        username: "postgres",
+        password: "postgres",
+        hostname: "localhost",
+        database: "instabot_dev"
+      ]
   end
 
+config :instabot, Instabot.Repo, database_config
+
+# Configure your database
 config :instabot, Instabot.Repo,
-  database_config ++ [stacktrace: true, show_sensitive_data_on_connection_error: true, pool_size: 10]
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 10
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -19,7 +40,7 @@ config :instabot, Instabot.Repo,
 config :instabot, InstabotWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}],
+  http: [ip: {0, 0, 0, 0}, port: port],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,

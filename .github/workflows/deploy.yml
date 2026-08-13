@@ -78,10 +78,11 @@ jobs:
           if [[ "$RETRY_BLOCKED" == "true" ]]; then
             retry_mode="force"
           fi
-          set +e
-          ssh -o StrictHostKeyChecking=accept-new prominent-deploy@symphony sudo /run/current-system/sw/bin/prominent-tools-activate instabot status "$target_revision" "$retry_mode"
-          status_result="$?"
-          set -e
+          if ssh -o StrictHostKeyChecking=accept-new prominent-deploy@symphony sudo /run/current-system/sw/bin/prominent-tools-activate instabot status "$target_revision" "$retry_mode"; then
+            status_result=0
+          else
+            status_result="$?"
+          fi
           if [[ "$status_result" == 10 ]]; then
             trap - ERR
             exit 0

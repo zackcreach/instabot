@@ -144,13 +144,17 @@
     )
     // {
       deploy.nodes.symphony = {
-        hostname = "symphony";
+        hostname = "127.0.0.1";
         sshUser = "prominent-deploy";
         sshOpts = [
           "-o"
           "StrictHostKeyChecking=accept-new"
+          "-o"
+          "IdentitiesOnly=yes"
+          "-i"
+          "/var/lib/prominent-deploy/.ssh/prominent-deploy"
         ];
-        remoteBuild = true;
+        remoteBuild = false;
         profiles.instabot = {
           user = "prominent-deploy";
           profilePath = "/nix/var/nix/profiles/per-user/prominent-deploy/instabot";

@@ -36,9 +36,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858
-
       - name: Connect to tailnet
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8
         with:
@@ -88,7 +85,6 @@ jobs:
             exit 0
           fi
           [[ "$status_result" == 0 ]]
-          git checkout --detach "$target_revision"
           deployment_phase="build"
-          nix run .#deploy-rs -- --skip-checks .#symphony.instabot
+          ssh -o StrictHostKeyChecking=accept-new prominent-deploy@symphony prominent-tools-deploy instabot "$target_revision"
           trap - ERR

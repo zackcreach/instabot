@@ -58,7 +58,8 @@
           inherit (pkgs) lib;
           inherit beamPackages;
           overrides = _final: previous: {
-            lazy_html = previous.lazy_html.overrideAttrs (_old: {
+            lazy_html = previous.lazy_html.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.git ];
               preBuild = ''
                 export HOME="$TMPDIR"
                 export XDG_CACHE_HOME="$TMPDIR"

@@ -28,14 +28,9 @@ config :bcrypt_elixir, :log_rounds, 1
 config :instabot, Instabot.Mailer, adapter: Swoosh.Adapters.Test
 config :instabot, Instabot.Repo, database_config
 
-# Configure your database
-#
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
-config :instabot, Instabot.Repo,
-  pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+config :instabot,
+       Instabot.Repo,
+       database_config ++ [pool: Ecto.Adapters.SQL.Sandbox, pool_size: System.schedulers_online() * 2]
 
 config :instabot, Instabot.Scraper,
   playwright_path: Path.expand("../assets/playwright", __DIR__),
@@ -53,6 +48,7 @@ config :instabot, InstabotWeb.Endpoint,
 
 config :instabot, Oban, testing: :manual
 config :instabot, :rate_limiting_enabled, false
+config :instabot, :turnstile, enabled: false
 
 # Print only warnings and errors during test
 config :logger, level: :warning

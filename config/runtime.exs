@@ -127,6 +127,14 @@ if config_env() == :prod do
 
   from_email = System.get_env("MAILGUN_FROM_EMAIL", "noreply@#{mailgun_domain}")
 
+  turnstile_site_key =
+    System.get_env("TURNSTILE_SITE_KEY") ||
+      raise "environment variable TURNSTILE_SITE_KEY is missing."
+
+  turnstile_secret_key =
+    System.get_env("TURNSTILE_SECRET_KEY") ||
+      raise "environment variable TURNSTILE_SECRET_KEY is missing."
+
   config :instabot, Cloudinary,
     cloud_name: cloudinary_cloud_name,
     api_key: cloudinary_api_key,
@@ -176,4 +184,5 @@ if config_env() == :prod do
   config :instabot, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
   config :instabot, :email_base_url, email_base_url
   config :instabot, :from_email, from_email
+  config :instabot, :turnstile, enabled: true, site_key: turnstile_site_key, secret_key: turnstile_secret_key
 end

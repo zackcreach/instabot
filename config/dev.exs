@@ -15,21 +15,12 @@ database_config =
       ]
 
     _external_database ->
-      [
-        username: "postgres",
-        password: "postgres",
-        hostname: "localhost",
-        database: "instabot_dev"
-      ]
+      [username: "postgres", password: "postgres", hostname: "localhost", database: "instabot_dev"]
   end
 
-config :instabot, Instabot.Repo, database_config
-
-# Configure your database
-config :instabot, Instabot.Repo,
-  stacktrace: true,
-  show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+config :instabot,
+       Instabot.Repo,
+       database_config ++ [stacktrace: true, show_sensitive_data_on_connection_error: true, pool_size: 10]
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -87,6 +78,11 @@ config :instabot, InstabotWeb.Endpoint,
       ~r"lib/instabot_web/(controllers|live|components)/.*\.(ex|heex)$"E
     ]
   ]
+
+config :instabot, :turnstile,
+  enabled: true,
+  site_key: "1x00000000000000000000AA",
+  secret_key: "1x0000000000000000000000000000000AA"
 
 # Enable dev routes for dashboard and mailbox
 config :instabot, dev_routes: true

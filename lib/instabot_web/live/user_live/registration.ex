@@ -4,6 +4,7 @@ defmodule InstabotWeb.UserLive.Registration do
 
   alias Instabot.Accounts
   alias Instabot.Accounts.User
+  alias Instabot.Turnstile
 
   @impl true
   def render(assigns) do
@@ -37,6 +38,10 @@ defmodule InstabotWeb.UserLive.Registration do
               phx-mounted={JS.focus()}
             />
 
+            <div phx-update="ignore" id="turnstile-container">
+              <div class="cf-turnstile" data-sitekey={@turnstile_site_key} data-size="invisible"></div>
+            </div>
+
             <.button phx-disable-with="Creating account..." class="btn btn-primary w-full">
               Create an account
             </.button>
@@ -55,26 +60,34 @@ defmodule InstabotWeb.UserLive.Registration do
   def mount(_params, _session, socket) do
     changeset = Accounts.change_user_email(%User{}, %{}, validate_unique: false)
 
-    {:ok, assign_form(socket, changeset), temporary_assigns: [form: nil]}
+    socket =
+      socket
+      |> assign(turnstile_site_key: Application.get_env(:instabot, :turnstile, [])[:site_key])
+      |> assign_form(changeset)
+
+    {:ok, socket, temporary_assigns: [form: nil]}
   end
 
   @impl true
-  def handle_event("save", %{"user" => user_params}, socket) do
-    case Accounts.register_user(user_params) do
-      {:ok, user} ->
-        {:ok, _} =
-          Accounts.deliver_login_instructions(
-            user,
-            &url(~p"/users/log-in/#{&1}")
-          )
+  def handle_event("save", %{"user" => user_params} = params, socket) do
+    with :ok <- Turnstile.verify(params["cf-turnstile-response"]),
+         {:ok, user} <- Accounts.register_user(user_params) do
+      {:ok, _} =
+        Accounts.deliver_login_instructions(
+          user,
+          &url(~p"/users/log-in/#{&1}")
+        )
 
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "An email was sent to #{user.email}, please access it to confirm your account."
-         )
-         |> push_navigate(to: ~p"/users/log-in")}
+      {:noreply,
+       socket
+       |> put_flash(
+         :info,
+         "An email was sent to #{user.email}, please access it to confirm your account."
+       )
+       |> push_navigate(to: ~p"/users/log-in")}
+    else
+      {:error, :verification_failed} ->
+        {:noreply, put_flash(socket, :error, "Verification failed. Please try again.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}

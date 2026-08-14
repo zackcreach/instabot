@@ -15,8 +15,9 @@ defmodule InstabotWeb.Router do
 
     plug :put_secure_browser_headers, %{
       "content-security-policy" =>
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " <>
-          "img-src 'self' data: https:; connect-src 'self' wss:; font-src 'self'"
+        "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; " <>
+          "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; " <>
+          "connect-src 'self' wss:; frame-src https://challenges.cloudflare.com; font-src 'self'"
     }
 
     plug :fetch_current_scope_for_user

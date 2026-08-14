@@ -11,7 +11,7 @@ defmodule InstabotWeb.UserLive.RegistrationTest do
       assert html =~ "Register"
       assert html =~ "Log in"
       assert html =~ "cf-turnstile"
-      assert html =~ "data-size=\"invisible\""
+      refute html =~ "data-size="
     end
 
     test "redirects if already logged in", %{conn: conn} do

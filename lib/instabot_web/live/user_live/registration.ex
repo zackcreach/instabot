@@ -39,7 +39,7 @@ defmodule InstabotWeb.UserLive.Registration do
             />
 
             <div phx-update="ignore" id="turnstile-container">
-              <div class="cf-turnstile" data-sitekey={@turnstile_site_key} data-size="invisible"></div>
+              <div class="cf-turnstile" data-sitekey={@turnstile_site_key}></div>
             </div>
 
             <.button phx-disable-with="Creating account..." class="btn btn-primary w-full">

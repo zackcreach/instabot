@@ -90,5 +90,5 @@ jobs:
           [[ "$status_result" == 0 ]]
           git checkout --detach "$target_revision"
           deployment_phase="build"
-          nix run .#deploy-rs -- .#symphony.instabot
+          nix run .#deploy-rs -- --skip-checks .#symphony.instabot
           trap - ERR

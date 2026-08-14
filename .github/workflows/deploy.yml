@@ -53,7 +53,7 @@ jobs:
           RETRY_BLOCKED: ${{ inputs.retry_blocked }}
         run: |
           set -euo pipefail
-          if ! tailscale ping --timeout=10s symphony >/dev/null 2>&1; then
+          if ! ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new prominent-deploy@symphony true >/dev/null 2>&1; then
             echo "Symphony is unreachable; daily reconciliation will retry"
             exit 0
           fi

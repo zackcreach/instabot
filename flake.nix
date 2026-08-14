@@ -67,6 +67,11 @@
             lazy_html = previous.lazy_html.overrideAttrs (old: {
               nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.cmake ];
               dontUseCmakeConfigure = true;
+              postPatch = ''
+                substituteInPlace mix.exs \
+                  --replace-fail '"FINE_INCLUDE_DIR" => Fine.include_dir()' \
+                  '"FINE_INCLUDE_DIR" => "${previous.fine}/src/c_include"'
+              '';
               preBuild = ''
                 export HOME="$TMPDIR"
                 export XDG_CACHE_HOME="$TMPDIR"

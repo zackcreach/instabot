@@ -54,8 +54,6 @@ defmodule Instabot.MixProject do
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
-      {:heroicons,
-       github: "tailwindlabs/heroicons", tag: "v2.2.0", sparse: "optimized", app: false, compile: false, depth: 1},
       {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},
@@ -90,7 +88,7 @@ defmodule Instabot.MixProject do
       "assets.bridge.prod": ["cmd --cd assets npx tsc --project tsconfig.playwright.json"],
       "assets.test": ["assets.npm", "cmd --cd assets npm run typecheck", "cmd --cd assets npm test"],
       "playwright.install": ["cmd --cd assets npx playwright install chromium"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.setup": asset_setup_tasks(),
       "assets.build": ["compile", "tailwind instabot", "esbuild instabot"],
       "assets.deploy": [
         "assets.npm.prod",
@@ -100,5 +98,15 @@ defmodule Instabot.MixProject do
       ],
       precommit: ["assets.test", "compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
+  end
+
+  defp asset_setup_tasks do
+    case {System.get_env("MIX_TAILWIND_PATH"), System.get_env("MIX_ESBUILD_PATH")} do
+      {tailwind_path, esbuild_path} when tailwind_path != nil and esbuild_path != nil ->
+        []
+
+      _mix_managed_assets ->
+        ["tailwind.install --if-missing", "esbuild.install --if-missing"]
+    end
   end
 end

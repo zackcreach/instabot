@@ -56,6 +56,23 @@
         "type": "github"
       }
     },
+    "heroicons": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1731943910,
+        "narHash": "sha256-Jcxr1fSbmXO9bZKeg39Z/zVN0YJp17TX3LH5Us4lsZU=",
+        "owner": "tailwindlabs",
+        "repo": "heroicons",
+        "rev": "0435d4ca364a608cc75e2f8683d374e55abbae26",
+        "type": "github"
+      },
+      "original": {
+        "owner": "tailwindlabs",
+        "ref": "v2.2.0",
+        "repo": "heroicons",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1786599213,
@@ -76,6 +93,7 @@
       "inputs": {
         "deploy-rs": "deploy-rs",
         "flake-utils": "flake-utils",
+        "heroicons": "heroicons",
         "nixpkgs": "nixpkgs"
       }
     },

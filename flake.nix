@@ -4,6 +4,10 @@
     flake-utils.url = "github:numtide/flake-utils";
     deploy-rs.url = "github:serokell/deploy-rs";
     deploy-rs.inputs.nixpkgs.follows = "nixpkgs";
+    heroicons = {
+      url = "github:tailwindlabs/heroicons/v2.2.0";
+      flake = false;
+    };
   };
 
   outputs =
@@ -12,6 +16,7 @@
       nixpkgs,
       flake-utils,
       deploy-rs,
+      heroicons,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -24,18 +29,22 @@
         );
         version = "0.1.0";
         src = ./.;
-        runtimeAssets = pkgs.buildNpmPackage {
+        runtimeAssets = pkgs.stdenv.mkDerivation {
           pname = "instabot-runtime-assets";
           inherit version;
           src = ./assets;
-          npmDepsHash = "sha256-qw7MJdOgWmX9yz6206HDk/kgjA5urjXrliqkHlBM8a0=";
-          npmBuildScript = "bridge:production";
+          npmDeps = pkgs.importNpmLock { npmRoot = ./assets; };
+          nativeBuildInputs = [
+            pkgs.nodejs_24
+            pkgs.importNpmLock.npmConfigHook
+          ];
           npmFlags = [ "--ignore-scripts" ];
-          preBuild = ''
+          buildPhase = ''
+            runHook preBuild
             npm pkg set scripts.bridge:production="tsc --project tsconfig.playwright.json"
-          '';
-          postBuild = ''
+            npm run bridge:production
             npm prune --omit=dev --ignore-scripts
+            runHook postBuild
           '';
           installPhase = ''
             runHook preInstall
@@ -45,11 +54,46 @@
             runHook postInstall
           '';
         };
-        mixFodDeps = beamPackages.fetchMixDeps {
-          pname = "instabot-mix-deps";
-          inherit src version;
-          hash = "sha256-tpY7Az5eduy17vcHsLoFREGV5cyMtBiqIVcz2mrm3E8=";
+        mixNixDeps = import ./deps.nix {
+          inherit (pkgs) lib;
+          inherit beamPackages;
+          overrides = _final: previous: {
+            lazy_html = previous.lazy_html.overrideAttrs (_old: {
+              preBuild = ''
+                export HOME="$TMPDIR"
+                export XDG_CACHE_HOME="$TMPDIR"
+              '';
+            });
+            uxid = previous.uxid.overrideAttrs (_old: {
+              postPatch = ''
+                substituteInPlace mix.exs \
+                  --replace-fail "elixirc_options: [warnings_as_errors: true]" \
+                  "elixirc_options: [warnings_as_errors: false]"
+              '';
+            });
+          };
         };
+        updateMixDeps = pkgs.writeShellApplication {
+          name = "update-mix-deps";
+          runtimeInputs = [ pkgs.mix2nix ];
+          text = ''
+            mix2nix mix.lock | sed -e '$d' > deps.nix
+          '';
+        };
+        dependencyFreshness =
+          pkgs.runCommand "instabot-mix-dependencies-fresh"
+            {
+              nativeBuildInputs = [ pkgs.mix2nix ];
+            }
+            ''
+              mix2nix ${./mix.lock} | sed -e '$d' > generated-deps.nix
+              if ! cmp --silent generated-deps.nix ${./deps.nix}; then
+                echo "deps.nix is stale. Run: nix run .#update-mix-deps" >&2
+                diff --unified ${./deps.nix} generated-deps.nix >&2 || true
+                exit 1
+              fi
+              touch $out
+            '';
         devPostgres = pkgs.writeShellApplication {
           name = "dev-postgres";
           runtimeInputs = [ pkgs.postgresql_18 ];
@@ -89,7 +133,9 @@
       {
         packages.default = beamPackages.mixRelease {
           pname = "instabot";
-          inherit src version mixFodDeps;
+          inherit src version mixNixDeps;
+          nativeBuildInputs = [ dependencyFreshness ];
+          HEROICONS_PATH = "${heroicons}/optimized";
           MIX_ESBUILD_PATH = "${pkgs.esbuild}/bin/esbuild";
           MIX_TAILWIND_PATH = "${pkgs.tailwindcss_4}/bin/tailwindcss";
           postBuild = ''
@@ -100,11 +146,21 @@
             cp -r ${runtimeAssets} $out/share/instabot/assets
             ln -s ${pkgs.playwright-driver.browsers} $out/share/instabot/playwright-browsers
             mkdir -p $out/share/prominent-tools
-            printf '%s\n' '${self.rev or self.dirtyRev or "0000000000000000000000000000000000000000"}' > $out/share/prominent-tools/revision
+            printf '%s\n' '${
+              self.rev or self.dirtyRev or "0000000000000000000000000000000000000000"
+            }' > $out/share/prominent-tools/revision
           '';
         };
 
         packages.deploy-rs = deploy-rs.packages.${system}.default;
+        packages.dependency-freshness = dependencyFreshness;
+
+        apps.update-mix-deps = {
+          type = "app";
+          program = "${updateMixDeps}/bin/update-mix-deps";
+        };
+
+        checks.dependency-freshness = dependencyFreshness;
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
@@ -112,6 +168,7 @@
             pkg-config
             imagemagick
             nodejs
+            mix2nix
             playwright-driver.browsers
             postgresql_18
             devPostgres
@@ -124,6 +181,7 @@
           PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = true;
           MIX_ESBUILD_PATH = "${pkgs.esbuild}/bin/esbuild";
           MIX_TAILWIND_PATH = "${pkgs.tailwindcss_4}/bin/tailwindcss";
+          HEROICONS_PATH = "${heroicons}/optimized";
 
           shellHook = ''
             export LANG="''${LANG:-en_US.UTF-8}"
@@ -162,6 +220,8 @@
         };
       };
 
-      checks.x86_64-linux = deploy-rs.lib.x86_64-linux.deployChecks self.deploy;
+      checks.x86_64-linux = deploy-rs.lib.x86_64-linux.deployChecks self.deploy // {
+        dependency-freshness = self.packages.x86_64-linux.dependency-freshness;
+      };
     };
 }

@@ -4,6 +4,7 @@ defmodule Instabot.Shops.Scraper do
   """
 
   alias Instabot.Media
+  alias Instabot.Network.SafeUrl
   alias Instabot.Scraper.Browser
   alias Instabot.Scraper.Supervisor, as: ScraperSupervisor
   alias Instabot.Shops
@@ -37,7 +38,8 @@ defmodule Instabot.Shops.Scraper do
   end
 
   def scrape(%ShopifySite{} = site) do
-    with {:ok, browser} <- ScraperSupervisor.start_browser() do
+    with {:ok, _uri} <- SafeUrl.validate(site.home_url),
+         {:ok, browser} <- ScraperSupervisor.start_browser() do
       try do
         scrape_with_browser(browser, site)
       after
@@ -48,7 +50,7 @@ defmodule Instabot.Shops.Scraper do
 
   defp scrape_with_browser(browser, site) do
     with {:ok, _launch} <- Browser.launch(browser, []),
-         {:ok, page_id} <- Browser.new_page(browser, viewport: @viewport),
+         {:ok, page_id} <- Browser.new_page(browser, viewport: @viewport, block_private_networks: true),
          {:ok, _navigation} <- Browser.navigate(browser, page_id, site.home_url, wait_until: "load", timeout: 45_000),
          {:ok, banner_text} <- Browser.evaluate(browser, page_id, @top_banner_js),
          {:ok, %{"base64" => base64}} <- Browser.screenshot(browser, page_id, full_page: true),

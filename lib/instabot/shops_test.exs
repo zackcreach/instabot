@@ -22,6 +22,15 @@ defmodule Instabot.ShopsTest do
       assert "https://example.com/products/hat" == site.product_url
     end
 
+    test "rejects URL credentials and non-web ports" do
+      user = user_fixture()
+
+      for home_url <- ["https://user:password@example.com", "https://example.com:444"] do
+        assert {:error, changeset} = Shops.create_site(user.id, %{name: "Unsafe shop", home_url: home_url})
+        assert %{home_url: ["must be a valid URL using port 80 or 443 without credentials"]} = errors_on(changeset)
+      end
+    end
+
     test "lists due active sites using each interval" do
       user = user_fixture()
       now = ~U[2026-05-05 18:00:00Z]

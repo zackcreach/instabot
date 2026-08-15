@@ -1,13 +1,20 @@
 defmodule Instabot.Shops.ProductData do
   @moduledoc false
 
+  alias Instabot.Network.SafeUrl
+
+  @maximum_redirects 5
+
   def fetch(nil), do: {:ok, %{}}
   def fetch(""), do: {:ok, %{}}
 
-  def fetch(product_url) do
+  def fetch(product_url, options \\ []) do
+    resolver = Keyword.get(options, :resolver, &SafeUrl.resolve/1)
+    request_options = Keyword.get(options, :request_options, [])
+
     product_url
     |> product_json_url()
-    |> Req.get(decode_body: false)
+    |> request(resolver, request_options, @maximum_redirects)
     |> parse_response()
   end
 
@@ -25,6 +32,31 @@ defmodule Instabot.Shops.ProductData do
 
   defp ensure_json_extension(path) do
     if String.ends_with?(path, ".js"), do: path, else: path <> ".js"
+  end
+
+  defp request(url, resolver, request_options, redirects_remaining) do
+    with {:ok, _uri} <- SafeUrl.validate(url, resolver),
+         {:ok, response} <- Req.get(url, [decode_body: false, redirect: false] ++ request_options) do
+      follow_redirect(response, url, resolver, request_options, redirects_remaining)
+    end
+  end
+
+  defp follow_redirect(%Req.Response{status: status} = response, _url, _resolver, _request_options, _remaining)
+       when status not in 300..399, do: {:ok, response}
+
+  defp follow_redirect(_response, _url, _resolver, _request_options, 0), do: {:error, :too_many_redirects}
+
+  defp follow_redirect(response, url, resolver, request_options, redirects_remaining) do
+    case Req.Response.get_header(response, "location") do
+      [location | _rest] ->
+        url
+        |> URI.merge(location)
+        |> URI.to_string()
+        |> request(resolver, request_options, redirects_remaining - 1)
+
+      [] ->
+        {:error, :invalid_redirect}
+    end
   end
 
   defp parse_response({:ok, %{status: 200, body: body}}) when is_map(body) do

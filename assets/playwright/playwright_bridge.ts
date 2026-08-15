@@ -1,4 +1,6 @@
 import readline from "node:readline"
+import {lookup} from "node:dns/promises"
+import {isIP} from "node:net"
 import {chromium, type Browser, type BrowserContextOptions, type Page} from "playwright"
 
 type JsonObject = Record<string, unknown>
@@ -79,6 +81,17 @@ async function handleNewPage(state: BridgeState, params: JsonObject): Promise<Js
   }
 
   const context = await state.browser.newContext(contextOptions)
+
+  if (params.block_private_networks === true) {
+    await context.route("**/*", async route => {
+      if (await safeNetworkUrl(route.request().url())) {
+        await route.continue()
+      } else {
+        await route.abort("blockedbyclient")
+      }
+    })
+  }
+
   const page = await context.newPage()
   const responses: JsonResponse[] = []
 
@@ -337,6 +350,94 @@ function isStorageState(value: unknown): value is {
     Array.isArray(value.cookies) &&
     Array.isArray(value.origins)
   )
+}
+
+type AddressLookup = (hostname: string) => Promise<Array<{address: string}>>
+
+export async function safeNetworkUrl(
+  value: string,
+  addressLookup: AddressLookup = hostname => lookup(hostname, {all: true, verbatim: true})
+): Promise<boolean> {
+  let url: URL
+
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+
+  if (["about:", "blob:", "data:"].includes(url.protocol)) {
+    return true
+  }
+
+  if (!["http:", "https:"].includes(url.protocol) || url.username !== "" || url.password !== "") {
+    return false
+  }
+
+  const port = url.port === "" ? (url.protocol === "https:" ? 443 : 80) : Number(url.port)
+
+  if (port !== 80 && port !== 443) {
+    return false
+  }
+
+  try {
+    const addresses = await addressLookup(url.hostname.replace(/^\[|\]$/g, ""))
+    return addresses.length > 0 && addresses.every(({address}) => publicAddress(address))
+  } catch {
+    return false
+  }
+}
+
+function publicAddress(address: string): boolean {
+  const version = isIP(address)
+
+  if (version === 4) {
+    return publicIpv4(address)
+  }
+
+  if (version === 6) {
+    return publicIpv6(address)
+  }
+
+  return false
+}
+
+function publicIpv4(address: string): boolean {
+  const [first, second, third] = address.split(".").map(Number)
+
+  if ([0, 10, 127].includes(first) || first >= 224) return false
+  if (first === 100 && second >= 64 && second <= 127) return false
+  if (first === 169 && second === 254) return false
+  if (first === 172 && second >= 16 && second <= 31) return false
+  if (first === 192 && second === 168) return false
+  if (first === 192 && second === 0 && [0, 2].includes(third)) return false
+  if (first === 192 && second === 88 && third === 99) return false
+  if (first === 198 && second >= 18 && second <= 19) return false
+  if (first === 198 && second === 51 && third === 100) return false
+  if (first === 203 && second === 0 && third === 113) return false
+
+  return true
+}
+
+function publicIpv6(address: string): boolean {
+  const normalized = address.toLowerCase()
+  const mappedIpv4 = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)
+
+  if (mappedIpv4) {
+    return publicIpv4(mappedIpv4[1])
+  }
+
+  const [first = 0, second = 0] = ipv6Parts(normalized)
+  return first >= 0x2000 && first <= 0x3fff && !(first === 0x2001 && second === 0x0db8)
+}
+
+function ipv6Parts(address: string): number[] {
+  const [left = "", right = ""] = address.split("::")
+  const leftParts = left === "" ? [] : left.split(":")
+  const rightParts = right === "" ? [] : right.split(":")
+  const missingParts = Math.max(0, 8 - leftParts.length - rightParts.length)
+
+  return [...leftParts, ...Array(missingParts).fill("0"), ...rightParts].map(part => Number.parseInt(part, 16))
 }
 
 const commands: Record<string, BridgeHandler> = {

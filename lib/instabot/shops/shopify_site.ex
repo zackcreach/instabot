@@ -4,6 +4,8 @@ defmodule Instabot.Shops.ShopifySite do
 
   import Ecto.Changeset
 
+  alias Instabot.Network.SafeUrl
+
   @scrape_interval_minutes [30, 60, 360, 720, 1440]
 
   schema "shopify_sites" do
@@ -52,9 +54,9 @@ defmodule Instabot.Shops.ShopifySite do
 
   defp validate_url(changeset, field) do
     validate_change(changeset, field, fn ^field, url ->
-      case URI.parse(url) do
-        %{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) -> []
-        _uri -> [{field, "must be a valid http or https URL"}]
+      case SafeUrl.validate_structure(url) do
+        {:ok, _uri} -> []
+        {:error, :unsafe_url} -> [{field, "must be a valid URL using port 80 or 443 without credentials"}]
       end
     end)
   end

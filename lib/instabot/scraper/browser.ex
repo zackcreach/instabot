@@ -8,14 +8,15 @@ defmodule Instabot.Scraper.Browser do
 
   require Logger
 
-  defstruct [:port, :pending, :next_id, :buffer, :config]
+  defstruct [:port, :pending, :next_id, :buffer, :config, browser_closed: false]
 
   @type state :: %__MODULE__{
           port: port() | nil,
           pending: %{String.t() => {GenServer.from(), reference()}},
           next_id: pos_integer(),
           buffer: String.t(),
-          config: map()
+          config: map(),
+          browser_closed: boolean()
         }
 
   # --- Client API ---
@@ -162,9 +163,8 @@ defmodule Instabot.Scraper.Browser do
   @doc "Stops the Browser GenServer."
   @spec stop(pid()) :: :ok
   def stop(pid) do
-    GenServer.stop(pid, :normal)
-  catch
-    :exit, _reason -> :ok
+    close_browser(pid)
+    stop_server(pid)
   end
 
   # --- Server Callbacks ---
@@ -215,6 +215,10 @@ defmodule Instabot.Scraper.Browser do
     {:noreply, %{state | pending: updated_pending, next_id: state.next_id + 1}}
   end
 
+  def handle_call(:browser_closed, _from, state) do
+    {:reply, :ok, %{state | browser_closed: true}}
+  end
+
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
     buffer = state.buffer <> data
@@ -251,16 +255,16 @@ defmodule Instabot.Scraper.Browser do
   end
 
   @impl true
+  def terminate(_reason, %{browser_closed: true, port: port} = _state) when is_port(port) do
+    close_port(port)
+  end
+
   def terminate(_reason, %{port: port} = _state) when is_port(port) do
     close_command = Jason.encode!(%{id: "shutdown", command: "close", params: %{}})
 
     Port.command(port, close_command <> "\n")
 
-    try do
-      Port.close(port)
-    rescue
-      ArgumentError -> :ok
-    end
+    close_port(port)
   end
 
   def terminate(_reason, _state), do: :ok
@@ -269,6 +273,28 @@ defmodule Instabot.Scraper.Browser do
 
   defp call(pid, command, params) do
     GenServer.call(pid, {:command, command, params}, :infinity)
+  end
+
+  defp close_browser(pid) do
+    case close(pid) do
+      {:ok, _data} -> GenServer.call(pid, :browser_closed)
+      {:error, reason} -> Logger.warning("Failed to close browser before stopping bridge: #{inspect(reason)}")
+    end
+  catch
+    :exit, reason ->
+      Logger.warning("Failed to close browser before stopping bridge: #{inspect(reason)}")
+  end
+
+  defp stop_server(pid) do
+    GenServer.stop(pid, :normal)
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp close_port(port) do
+    Port.close(port)
+  rescue
+    ArgumentError -> :ok
   end
 
   defp split_buffer(buffer) do

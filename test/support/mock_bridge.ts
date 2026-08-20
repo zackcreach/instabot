@@ -1,4 +1,6 @@
 import readline from "node:readline"
+import {writeFileSync} from "node:fs"
+import {spawn, type ChildProcess} from "node:child_process"
 
 export type MockRequest = {
   command?: string
@@ -71,6 +73,13 @@ export function handleMockRequest(
 }
 
 export function startMockBridge(input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout): void {
+  const childPidPath = process.env.INSTABOT_MOCK_BRIDGE_CHILD_PID_PATH
+  const child = childPidPath ? spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"]) : undefined
+
+  if (childPidPath && child?.pid) {
+    writeFileSync(childPidPath, child.pid.toString())
+  }
+
   const rl = readline.createInterface({
     input,
     output,
@@ -85,15 +94,33 @@ export function startMockBridge(input: NodeJS.ReadableStream = process.stdin, ou
     throw error
   })
 
-  rl.on("line", line => {
+  rl.on("line", async line => {
     const response = handleMockRequest(line)
 
     if (response) {
+      if (response.status === "ok" && JSON.parse(line).command === "close") {
+        await stopChild(child)
+      }
+
       output.write(`${JSON.stringify(response)}\n`)
     }
   })
 
-  rl.on("close", () => process.exit(0))
+  rl.on("close", async () => {
+    await stopChild(child)
+    process.exit(0)
+  })
+}
+
+function stopChild(child: ChildProcess | undefined): Promise<void> {
+  if (!child || child.exitCode !== null) {
+    return Promise.resolve()
+  }
+
+  return new Promise(resolve => {
+    child.once("exit", () => resolve())
+    child.kill()
+  })
 }
 
 if (require.main === module) {

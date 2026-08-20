@@ -13,8 +13,6 @@ defmodule Instabot.Scraper.LoginOrchestrator do
   alias Instabot.Scraper.Session
   alias Instabot.Scraper.Supervisor, as: ScraperSupervisor
 
-  require Logger
-
   @login_url "https://www.instagram.com/accounts/login/"
   @username_selector ~s(input[name="email"], input[name="username"])
   @password_selector ~s(input[name="pass"], input[name="password"])

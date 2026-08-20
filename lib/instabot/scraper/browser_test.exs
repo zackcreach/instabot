@@ -137,6 +137,29 @@ defmodule Instabot.Scraper.BrowserTest do
       {:ok, pid} = start_mock_browser()
       :ok = Browser.stop(pid)
       refute Process.alive?(pid)
+      :ok = Browser.stop(pid)
+    end
+
+    test "waits for bridge descendants to exit" do
+      child_pid_path =
+        Path.join(System.tmp_dir!(), "instabot-mock-bridge-child-#{System.unique_integer([:positive])}")
+
+      System.put_env("INSTABOT_MOCK_BRIDGE_CHILD_PID_PATH", child_pid_path)
+
+      on_exit(fn ->
+        System.delete_env("INSTABOT_MOCK_BRIDGE_CHILD_PID_PATH")
+        File.rm(child_pid_path)
+      end)
+
+      {:ok, pid} = start_mock_browser()
+      {:ok, _data} = Browser.launch(pid)
+      child_pid = child_pid_path |> File.read!() |> String.trim()
+      assert {_output, 0} = System.cmd("kill", ["-0", child_pid], stderr_to_stdout: true)
+
+      :ok = Browser.stop(pid)
+
+      assert {_output, exit_status} = System.cmd("kill", ["-0", child_pid], stderr_to_stdout: true)
+      refute 0 == exit_status
     end
   end
 end

@@ -26,11 +26,12 @@ config :bcrypt_elixir, :log_rounds, 1
 
 # In test we don't send emails
 config :instabot, Instabot.Mailer, adapter: Swoosh.Adapters.Test
-config :instabot, Instabot.Repo, database_config
 
 config :instabot,
        Instabot.Repo,
        database_config ++ [pool: Ecto.Adapters.SQL.Sandbox, pool_size: System.schedulers_online() * 2]
+
+config :instabot, Instabot.Repo, database_config
 
 config :instabot, Instabot.Scraper,
   playwright_path: Path.expand("../assets/playwright", __DIR__),

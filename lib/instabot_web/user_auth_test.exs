@@ -70,7 +70,7 @@ defmodule InstabotWeb.UserAuthTest do
       assert get_session(conn, :user_token) == conn.cookies[@remember_me_cookie]
       assert get_session(conn, :user_remember_me) == true
 
-      assert %{value: signed_token, max_age: max_age} = conn.resp_cookies[@remember_me_cookie]
+      assert %{value: signed_token, max_age: max_age, secure: false} = conn.resp_cookies[@remember_me_cookie]
       assert signed_token != get_session(conn, :user_token)
       assert max_age == @remember_me_cookie_max_age
     end
@@ -100,7 +100,7 @@ defmodule InstabotWeb.UserAuthTest do
       # now we log in again and even without explicitly setting remember_me,
       # the cookie should be set again
       conn = UserAuth.log_in_user(conn, user, %{})
-      assert %{value: signed_token, max_age: max_age} = conn.resp_cookies[@remember_me_cookie]
+      assert %{value: signed_token, max_age: max_age, secure: false} = conn.resp_cookies[@remember_me_cookie]
       assert signed_token != get_session(conn, :user_token)
       assert max_age == @remember_me_cookie_max_age
       assert get_session(conn, :user_remember_me) == true
@@ -205,7 +205,7 @@ defmodule InstabotWeb.UserAuthTest do
       assert conn.assigns.current_scope.user.authenticated_at == user.authenticated_at
       assert new_token = get_session(conn, :user_token)
       assert new_token != token
-      assert %{value: new_signed_token, max_age: max_age} = conn.resp_cookies[@remember_me_cookie]
+      assert %{value: new_signed_token, max_age: max_age, secure: false} = conn.resp_cookies[@remember_me_cookie]
       assert new_signed_token != signed_token
       assert max_age == @remember_me_cookie_max_age
     end

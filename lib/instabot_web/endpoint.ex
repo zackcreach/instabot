@@ -9,7 +9,8 @@ defmodule InstabotWeb.Endpoint do
     key: "_instabot_key",
     signing_salt: "2jSJQeH1",
     encryption_salt: "RC03AHP6SyhXzN5NIIG3gvSiHM+kjPWC",
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: Application.compile_env(:instabot, :secure_cookies, false)
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

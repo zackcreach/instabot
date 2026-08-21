@@ -9,7 +9,6 @@ defmodule Instabot.Instagram.InstagramConnection do
   schema "instagram_connections" do
     field :instagram_username, :string
     field :encrypted_cookies, :binary
-    field :encrypted_password, :binary
     field :status, :string, default: "disconnected"
     field :cookies_expire_at, :utc_datetime
     field :last_login_at, :utc_datetime
@@ -24,7 +23,6 @@ defmodule Instabot.Instagram.InstagramConnection do
     |> cast(attrs, [
       :instagram_username,
       :encrypted_cookies,
-      :encrypted_password,
       :status,
       :cookies_expire_at,
       :last_login_at

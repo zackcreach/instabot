@@ -5,7 +5,6 @@ defmodule Instabot.Scraper.LoginOrchestrator do
   Communicates progress back via PubSub broadcasts on topic `"instagram_login:{user_id}"`.
   """
 
-  alias Instabot.Encryption
   alias Instabot.Instagram
   alias Instabot.Scraper.AntiDetection
   alias Instabot.Scraper.Browser
@@ -30,7 +29,7 @@ defmodule Instabot.Scraper.LoginOrchestrator do
   def run(user_id, username, password) do
     topic = "instagram_login:#{user_id}"
 
-    with {:ok, connection} <- upsert_connecting(user_id, username, password),
+    with {:ok, connection} <- upsert_connecting(user_id, username),
          {:ok, browser, page_id} <- start_browser(topic) do
       try do
         perform_login(browser, page_id, username, password, topic, connection)
@@ -48,12 +47,9 @@ defmodule Instabot.Scraper.LoginOrchestrator do
     end
   end
 
-  defp upsert_connecting(user_id, username, password) do
-    encrypted_password = Encryption.encrypt_term(password)
-
+  defp upsert_connecting(user_id, username) do
     Instagram.upsert_connection(user_id, %{
       instagram_username: username,
-      encrypted_password: encrypted_password,
       status: "connecting"
     })
   end

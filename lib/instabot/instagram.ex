@@ -30,7 +30,7 @@ defmodule Instabot.Instagram do
     %InstagramConnection{user_id: user_id}
     |> InstagramConnection.changeset(attrs)
     |> Repo.insert(
-      on_conflict: {:replace, [:instagram_username, :encrypted_password, :status, :updated_at]},
+      on_conflict: {:replace, [:instagram_username, :status, :updated_at]},
       conflict_target: :user_id,
       returning: true
     )

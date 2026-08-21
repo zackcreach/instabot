@@ -71,6 +71,8 @@ config :instabot, Oban,
      ]}
   ]
 
+config :instabot, :credential_encryption_key, "instabot-development-key-32bytes"
+
 config :instabot, :scopes,
   user: [
     default: true,

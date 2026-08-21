@@ -106,6 +106,15 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
+  credential_encryption_key =
+    case System.get_env("CREDENTIAL_ENCRYPTION_KEY") do
+      nil ->
+        raise "environment variable CREDENTIAL_ENCRYPTION_KEY is missing."
+
+      credential_encryption_secret ->
+        :crypto.hash(:sha256, credential_encryption_secret)
+    end
+
   host = System.get_env("PHX_HOST") || "example.com"
   scheme = System.get_env("PHX_SCHEME") || "http"
   url_port = String.to_integer(System.get_env("PHX_PORT") || Integer.to_string(port))
@@ -181,6 +190,7 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  config :instabot, :credential_encryption_key, credential_encryption_key
   config :instabot, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
   config :instabot, :email_base_url, email_base_url
   config :instabot, :from_email, from_email

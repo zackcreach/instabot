@@ -35,17 +35,12 @@ defmodule InstabotWeb.Router do
     plug RateLimit, scale_ms: 60_000, limit: 10
   end
 
-  scope "/admin" do
-    pipe_through [:browser, :require_authenticated_user]
-
-    live_dashboard "/dashboard", metrics: InstabotWeb.Telemetry
-  end
-
   if Application.compile_env(:instabot, :dev_routes) do
     scope "/dev" do
       pipe_through :browser
 
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+      live_dashboard "/dashboard", metrics: InstabotWeb.Telemetry
     end
   end
 

@@ -1,0 +1,55 @@
+name: Maintenance CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maintenance-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+
+      - name: Reject baseline edits from maintenance branches
+        if: startsWith(github.head_ref, 'nix-maintenance/')
+        run: git diff --exit-code origin/main -- .github/advisory-baseline.json
+
+      - name: Run precommit
+        run: nix develop -c mix setup && nix develop -c mix precommit
+
+      - name: Check flake
+        run: nix flake check
+
+      - name: Build production release
+        run: nix build .#packages.x86_64-linux.default --no-link
+
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+
+      - name: Scan dependencies
+        run: nix run nixpkgs#osv-scanner -- scan source --format json --output osv-report.json . || test -s osv-report.json
+
+      - name: Enforce advisory baseline
+        run: python3 .github/scripts/check-advisory-baseline.py osv-report.json .github/advisory-baseline.json

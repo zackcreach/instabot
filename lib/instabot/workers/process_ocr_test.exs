@@ -6,16 +6,21 @@ defmodule Instabot.Workers.ProcessOCRTest do
   import Instabot.InstagramFixtures
 
   alias Instabot.Instagram
+  alias Instabot.Media.Downloader
   alias Instabot.Notifications
   alias Instabot.Workers.ProcessOCR
   alias Instabot.Workers.SendImmediateNotification
 
   setup do
+    previous_downloader_config = Application.get_env(:instabot, Downloader)
     user = user_fixture()
     profile = tracked_profile_fixture(user)
     screenshot_path = Path.join(System.tmp_dir!(), "process_ocr_#{System.unique_integer([:positive])}.png")
 
-    on_exit(fn -> File.rm(screenshot_path) end)
+    on_exit(fn ->
+      File.rm(screenshot_path)
+      restore_config(Downloader, previous_downloader_config)
+    end)
 
     {:ok, story} =
       Instagram.create_story(profile.id, %{
@@ -106,13 +111,23 @@ defmodule Instabot.Workers.ProcessOCRTest do
       exit 0
       """)
 
-      bypass = Bypass.open()
+      adapter = fn request ->
+        response =
+          Req.Response.new(
+            status: 200,
+            headers: %{"content-type" => ["image/png"]},
+            body: <<0x89, "PNG\r\n", 0x1A, "\n", "image">>
+          )
 
-      Bypass.expect_once(bypass, "GET", "/story.png", fn conn ->
-        Plug.Conn.resp(conn, 200, "image")
-      end)
+        {request, response}
+      end
 
-      screenshot_url = "http://localhost:#{bypass.port}/story.png"
+      Application.put_env(:instabot, Downloader,
+        resolver: fn _host -> {:ok, [{93, 184, 216, 34}]} end,
+        request_options: [adapter: adapter]
+      )
+
+      screenshot_url = "https://media.example/story.png"
       {:ok, story} = Instagram.update_story_ocr(story, %{screenshot_path: nil, screenshot_url: screenshot_url})
 
       assert :ok == ProcessOCR.perform(%Oban.Job{args: %{"story_id" => story.id}})
@@ -122,6 +137,9 @@ defmodule Instabot.Workers.ProcessOCRTest do
       assert "Hosted story" == refreshed.ocr_text
     end
   end
+
+  defp restore_config(module, nil), do: Application.delete_env(:instabot, module)
+  defp restore_config(module, config), do: Application.put_env(:instabot, module, config)
 
   defp with_fake_tesseract(contents) do
     previous_path = System.get_env("PATH", "")

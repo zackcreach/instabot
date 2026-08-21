@@ -1,14 +1,16 @@
 defmodule Instabot.MediaTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Instabot.Media
   alias Instabot.Media.Cloudinary
+  alias Instabot.Media.Downloader
 
   @test_uploads_dir "test/tmp/uploads"
 
   setup do
     media_config = Application.get_env(:instabot, Media)
     cloudinary_config = Application.get_env(:instabot, Cloudinary)
+    downloader_config = Application.get_env(:instabot, Downloader)
 
     File.rm_rf!(@test_uploads_dir)
     Application.put_env(:instabot, :uploads_dir, @test_uploads_dir)
@@ -18,6 +20,7 @@ defmodule Instabot.MediaTest do
       Application.delete_env(:instabot, :uploads_dir)
       restore_env(Media, media_config)
       restore_env(Cloudinary, cloudinary_config)
+      restore_env(Downloader, downloader_config)
     end)
   end
 
@@ -61,15 +64,13 @@ defmodule Instabot.MediaTest do
 
   describe "download_and_save/3" do
     test "downloads and saves file from URL" do
-      bypass = Bypass.open()
+      configure_download(
+        status: 200,
+        headers: %{"content-type" => ["image/jpeg"]},
+        body: <<0xFF, 0xD8, 0xFF, 0xE0>>
+      )
 
-      Bypass.expect_once(bypass, "GET", "/image.jpg", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("image/jpeg")
-        |> Plug.Conn.resp(200, <<0xFF, 0xD8, 0xFF, 0xE0>>)
-      end)
-
-      url = "http://localhost:#{bypass.port}/image.jpg"
+      url = "https://media.example/image.jpg"
       assert {:ok, result} = Media.download_and_save(url, "test_post", "image_0.jpg")
       assert %{local_path: local_path, content_type: "image/jpeg", file_size: 4} = result
       assert String.ends_with?(local_path, "test_post/image_0.jpg")
@@ -77,39 +78,32 @@ defmodule Instabot.MediaTest do
     end
 
     test "returns error for non-200 response" do
-      bypass = Bypass.open()
-
-      Bypass.expect_once(bypass, "GET", "/missing.jpg", fn conn ->
-        Plug.Conn.resp(conn, 404, "Not Found")
-      end)
-
-      url = "http://localhost:#{bypass.port}/missing.jpg"
+      configure_download(status: 404, body: "Not Found")
+      url = "https://media.example/missing.jpg"
       assert {:error, {:http_error, 404}} = Media.download_and_save(url, "test_post", "image_0.jpg")
     end
 
-    test "infers content type from URL extension when header missing" do
-      bypass = Bypass.open()
+    test "uses the validated response content type" do
+      configure_download(
+        status: 200,
+        headers: %{"content-type" => ["image/png"]},
+        body: <<0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A>>
+      )
 
-      Bypass.expect_once(bypass, "GET", "/photo.png", fn conn ->
-        Plug.Conn.resp(conn, 200, <<0x89, 0x50, 0x4E, 0x47>>)
-      end)
-
-      url = "http://localhost:#{bypass.port}/photo.png"
+      url = "https://media.example/photo.png"
       assert {:ok, %{content_type: "image/png"}} = Media.download_and_save(url, "test_post", "image_0.png")
     end
   end
 
   describe "download_and_upload/3" do
     test "downloads bytes and sends them to the configured storage adapter" do
-      bypass = Bypass.open()
+      configure_download(
+        status: 200,
+        headers: %{"content-type" => ["image/jpeg"]},
+        body: <<0xFF, 0xD8, 0xFF, 0xE0>>
+      )
 
-      Bypass.expect_once(bypass, "GET", "/image.jpg", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("image/jpeg")
-        |> Plug.Conn.resp(200, <<0xFF, 0xD8, 0xFF, 0xE0>>)
-      end)
-
-      url = "http://localhost:#{bypass.port}/image.jpg"
+      url = "https://media.example/image.jpg"
       assert {:ok, result} = Media.download_and_upload(url, "test_post", "image_0.jpg")
 
       assert %{
@@ -122,6 +116,15 @@ defmodule Instabot.MediaTest do
       assert String.ends_with?(local_path, "test_post/image_0.jpg")
       assert File.exists?(local_path)
     end
+  end
+
+  defp configure_download(response_options) do
+    adapter = fn request -> {request, Req.Response.new(response_options)} end
+
+    Application.put_env(:instabot, Downloader,
+      resolver: fn _host -> {:ok, [{93, 184, 216, 34}]} end,
+      request_options: [adapter: adapter]
+    )
   end
 
   describe "post_image_urls/1" do
@@ -197,4 +200,7 @@ defmodule Instabot.MediaTest do
   defp restore_env(Media, value), do: Application.put_env(:instabot, Media, value)
 
   defp restore_env(Cloudinary, value), do: Application.put_env(:instabot, Cloudinary, value)
+
+  defp restore_env(Downloader, nil), do: Application.delete_env(:instabot, Downloader)
+  defp restore_env(Downloader, value), do: Application.put_env(:instabot, Downloader, value)
 end

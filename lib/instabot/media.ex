@@ -4,6 +4,7 @@ defmodule Instabot.Media do
   """
 
   alias Instabot.Media.Cloudinary
+  alias Instabot.Media.Downloader
   alias Instabot.Media.LocalStorage
 
   @default_uploads_dir "priv/static/uploads"
@@ -243,16 +244,7 @@ defmodule Instabot.Media do
   defp merge_upload_metadata({:error, reason}, _metadata), do: {:error, reason}
 
   defp fetch(url) do
-    case Req.get(url, decode_body: false, max_retries: 2) do
-      {:ok, %Req.Response{status: 200} = response} ->
-        {:ok, response}
-
-      {:ok, %Req.Response{status: status}} ->
-        {:error, {:http_error, status}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    Downloader.fetch(url, Application.get_env(:instabot, Downloader, []))
   end
 
   defp extract_content_type(headers, url) do

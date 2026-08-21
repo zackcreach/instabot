@@ -5,6 +5,8 @@ defmodule Instabot.Media.Cloudinary do
 
   @behaviour Instabot.Media.Storage
 
+  alias Instabot.Media.Downloader
+
   @default_endpoint "https://api.cloudinary.com/v1_1"
 
   @impl true
@@ -41,15 +43,12 @@ defmodule Instabot.Media.Cloudinary do
     filename = Keyword.get_lazy(opts, :filename, fn -> temp_filename(url) end)
     path = Path.join(System.tmp_dir!(), filename)
 
-    case Req.get(url, decode_body: false, max_retries: 2) do
-      {:ok, %Req.Response{status: 200, body: body}} ->
+    case Downloader.fetch(url, Application.get_env(:instabot, Downloader, [])) do
+      {:ok, %Req.Response{body: body}} ->
         case File.write(path, body) do
           :ok -> {:ok, path}
           {:error, reason} -> {:error, {:write_failed, reason}}
         end
-
-      {:ok, %Req.Response{status: status}} ->
-        {:error, {:http_error, status}}
 
       {:error, reason} ->
         {:error, reason}

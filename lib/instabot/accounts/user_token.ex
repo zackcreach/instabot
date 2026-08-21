@@ -11,7 +11,7 @@ defmodule Instabot.Accounts.UserToken do
 
   @magic_link_validity_in_minutes 15
   @change_email_validity_in_days 7
-  @session_validity_in_days 400
+  @session_validity_in_days 30
 
   schema "users_tokens" do
     field :token, :binary

@@ -302,9 +302,15 @@ defmodule Instabot.AccountsTest do
     end
 
     test "does not return user for expired token", %{token: token} do
-      dt = ~N[2020-01-01 00:00:00]
-      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt, authenticated_at: dt])
+      offset_user_token(token, -31, :day)
       refute Accounts.get_user_by_session_token(token)
+    end
+
+    test "returns user before token expires", %{user: user, token: token} do
+      offset_user_token(token, -29, :day)
+
+      assert {session_user, _token_inserted_at} = Accounts.get_user_by_session_token(token)
+      assert user.id == session_user.id
     end
   end
 

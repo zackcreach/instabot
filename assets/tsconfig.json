@@ -8,7 +8,7 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "paths": {
-      "phoenix_live_view": ["../deps/phoenix_live_view/assets/js/types/phoenix_live_view/index.d.ts"],
+      "phoenix_live_view": ["../deps/phoenix_live_view/assets/js/types/index.d.ts"],
       "*": ["../deps/*"]
     },
     "skipLibCheck": true,

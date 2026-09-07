@@ -62,12 +62,12 @@ let
 
     certifi = buildRebar3 rec {
       name = "certifi";
-      version = "2.15.0";
+      version = "2.17.0";
 
       src = fetchHex {
         pkg = "certifi";
         version = "${version}";
-        sha256 = "b147ed22ce71d72eafdad94f055165c1c182f61a2ff49df28bcc71d1d5b94a60";
+        sha256 = "8122798a17f0293c80daada25d0f81c7f4d708c73fef782c7c9b1950e26e4d21";
       };
 
       beamDeps = [];
@@ -281,17 +281,30 @@ let
       beamDeps = [ expo ];
     };
 
+    h2 = buildRebar3 rec {
+      name = "h2";
+      version = "0.12.0";
+
+      src = fetchHex {
+        pkg = "h2";
+        version = "${version}";
+        sha256 = "beaafc93c54cdc5d623247334d3970cdf4bc66b6b8b296b74ba1d7c7513c3dfc";
+      };
+
+      beamDeps = [];
+    };
+
     hackney = buildRebar3 rec {
       name = "hackney";
-      version = "1.25.0";
+      version = "4.7.4";
 
       src = fetchHex {
         pkg = "hackney";
         version = "${version}";
-        sha256 = "7209bfd75fd1f42467211ff8f59ea74d6f2a9e81cbcee95a56711ee79fd6b1d4";
+        sha256 = "d07d7e1358353ab6cc75132f058c155287f3e013d43f709fbb79d79eeab98195";
       };
 
-      beamDeps = [ certifi idna metrics mimerl parse_trans ssl_verify_fun unicode_util_compat ];
+      beamDeps = [ certifi h2 idna mimerl parse_trans ssl_verify_fun webtransport ];
     };
 
     hammer = buildMix rec {
@@ -322,15 +335,15 @@ let
 
     idna = buildRebar3 rec {
       name = "idna";
-      version = "6.1.1";
+      version = "7.1.0";
 
       src = fetchHex {
         pkg = "idna";
         version = "${version}";
-        sha256 = "92376eb7894412ed19ac475e4a86f7b413c1b9fbb5bd16dccd57934157944cea";
+        sha256 = "6ae959a025bf36df61a8cab8508d9654891b5426a84c44d82deaffd6ddf8c71f";
       };
 
-      beamDeps = [ unicode_util_compat ];
+      beamDeps = [];
     };
 
     jason = buildMix rec {
@@ -400,12 +413,12 @@ let
 
     mint = buildMix rec {
       name = "mint";
-      version = "1.9.3";
+      version = "1.10.0";
 
       src = fetchHex {
         pkg = "mint";
         version = "${version}";
-        sha256 = "5f7c9342480c069dbbc4eeac3490303c9e01870ff01a7f1d29b6107054fc1e74";
+        sha256 = "8b16fb72aaa7531d206a1f05e4cc85509ba531ccec7a17a22736c9c95cbb24d1";
       };
 
       beamDeps = [ hpax ];
@@ -439,12 +452,12 @@ let
 
     oban = buildMix rec {
       name = "oban";
-      version = "2.23.1";
+      version = "2.24.1";
 
       src = fetchHex {
         pkg = "oban";
         version = "${version}";
-        sha256 = "a9855b9f5d87e31de3e2f46731b163f372e329613892a56c5b2aacceb50ed508";
+        sha256 = "ef8482472cf198554400b7f8e36a0ffee75c3a64de425d5c7ee625d271925ac7";
       };
 
       beamDeps = [ ecto_sql jason postgrex telemetry ];
@@ -452,12 +465,12 @@ let
 
     parse_trans = buildRebar3 rec {
       name = "parse_trans";
-      version = "3.4.1";
+      version = "3.4.2";
 
       src = fetchHex {
         pkg = "parse_trans";
         version = "${version}";
-        sha256 = "620a406ce75dada827b82e453c19cf06776be266f5a67cff34e1ef2cbb60e49a";
+        sha256 = "4c25347de3b7c35732d32e69ab43d1ceee0beae3f3b3ade1b59cbd3dd224d9ca";
       };
 
       beamDeps = [];
@@ -632,6 +645,19 @@ let
       beamDeps = [ db_connection decimal jason ];
     };
 
+    quic = buildRebar3 rec {
+      name = "quic";
+      version = "1.8.2";
+
+      src = fetchHex {
+        pkg = "quic";
+        version = "${version}";
+        sha256 = "274d2f41ee9c00d8d6415248df9fb5637381fe69b5387771dc37e91038a65479";
+      };
+
+      beamDeps = [];
+    };
+
     ranch = buildRebar3 rec {
       name = "ranch";
       version = "1.8.1";
@@ -647,12 +673,12 @@ let
 
     req = buildMix rec {
       name = "req";
-      version = "0.7.3";
+      version = "0.7.4";
 
       src = fetchHex {
         pkg = "req";
         version = "${version}";
-        sha256 = "73b303030dccc2b6d023ee5ada380825ab3a7cd3863aead493db09ec420ffdf2";
+        sha256 = "4b192d63253e8dcc6221ef992ea9ebef7d3555166e8423aa5b553e86bc3c69a2";
       };
 
       beamDeps = [ finch jason mime plug ];
@@ -764,12 +790,12 @@ let
 
     tzdata = buildMix rec {
       name = "tzdata";
-      version = "1.1.4";
+      version = "1.1.5";
 
       src = fetchHex {
         pkg = "tzdata";
         version = "${version}";
-        sha256 = "ab48888699de8ff4a255522fd858abe81bac2e64690a375e6cb590112cf4a24e";
+        sha256 = "38cc53f7ad4450f3bf72b66e2d5dc697690008a8c52be78b82b5b2959a66b74f";
       };
 
       beamDeps = [ hackney ];
@@ -825,6 +851,19 @@ let
       };
 
       beamDeps = [ bandit plug plug_cowboy websock ];
+    };
+
+    webtransport = buildRebar3 rec {
+      name = "webtransport";
+      version = "0.4.5";
+
+      src = fetchHex {
+        pkg = "webtransport";
+        version = "${version}";
+        sha256 = "bcb512239e48e551d5bd5c667312a9a7de4f29b89d84b1d33c5af44e1f3f730d";
+      };
+
+      beamDeps = [ h2 quic ];
     };
   };
 in self

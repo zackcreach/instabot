@@ -96,7 +96,7 @@ defmodule Instabot.MixProject do
         "esbuild instabot --minify",
         "phx.digest"
       ],
-      precommit: ["assets.test", "compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: ["assets.test", "compile --warnings-as-errors", "deps.unlock --check-unused", "format", "test"]
     ]
   end
 

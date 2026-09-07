@@ -372,19 +372,6 @@ let
       beamDeps = [ cc_precompiler elixir_make fine ];
     };
 
-    metrics = buildRebar3 rec {
-      name = "metrics";
-      version = "1.0.1";
-
-      src = fetchHex {
-        pkg = "metrics";
-        version = "${version}";
-        sha256 = "69b09adddc4f74a40716ae54d140f93beb0fb8978d8636eaded0c31b6f099f16";
-      };
-
-      beamDeps = [];
-    };
-
     mime = buildMix rec {
       name = "mime";
       version = "2.0.7";
@@ -799,19 +786,6 @@ let
       };
 
       beamDeps = [ hackney ];
-    };
-
-    unicode_util_compat = buildRebar3 rec {
-      name = "unicode_util_compat";
-      version = "0.7.1";
-
-      src = fetchHex {
-        pkg = "unicode_util_compat";
-        version = "${version}";
-        sha256 = "b3a917854ce3ae233619744ad1e0102e05673136776fb2fa76234f3e03b23642";
-      };
-
-      beamDeps = [];
     };
 
     uxid = buildMix rec {

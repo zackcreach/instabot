@@ -60,7 +60,7 @@ defmodule InstabotWeb.FeedLive do
           </form>
         </div>
 
-        <div :if={@posts == []} class="text-center py-16 opacity-70">
+        <div :if={@posts_empty?} class="text-center py-16 opacity-70">
           <.icon name="hero-photo" class="size-12 opacity-30 mx-auto mb-4" />
           <h3 class="text-lg font-semibold mb-2">
             {empty_title(@search, @profile_id)}
@@ -71,13 +71,14 @@ defmodule InstabotWeb.FeedLive do
         </div>
 
         <div
-          :if={@posts != []}
+          :if={!@posts_empty?}
           id="posts-grid"
+          phx-update="stream"
           class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         >
           <.link
-            :for={post <- @posts}
-            id={"post-#{post.id}"}
+            :for={{dom_id, post} <- @streams.posts}
+            id={dom_id}
             patch={~p"/feed/posts/#{post.id}"}
             class="card bg-base-100 shadow hover:shadow-lg transition-shadow cursor-pointer"
           >
@@ -124,7 +125,7 @@ defmodule InstabotWeb.FeedLive do
         </div>
 
         <div
-          :if={@posts != [] and length(@posts) < @total_posts}
+          :if={@has_more_posts?}
           id="posts-sentinel"
           phx-hook=".InfiniteScroll"
           class="flex justify-center py-4"
@@ -289,10 +290,10 @@ defmodule InstabotWeb.FeedLive do
       |> assign(:profiles, Instagram.list_tracked_profiles(user_id))
       |> assign(:profile_id, "")
       |> assign(:search, "")
-      |> assign(:limit, @page_size)
+      |> assign(:loaded_posts, 0)
       |> assign(:selected_post, nil)
       |> assign(:selected_image_index, 0)
-      |> load_posts()
+      |> reset_posts()
 
     {:ok, socket}
   end
@@ -323,8 +324,7 @@ defmodule InstabotWeb.FeedLive do
     socket =
       socket
       |> assign(:profile_id, profile_id)
-      |> assign(:limit, @page_size)
-      |> load_posts()
+      |> reset_posts()
 
     {:noreply, socket}
   end
@@ -333,19 +333,13 @@ defmodule InstabotWeb.FeedLive do
     socket =
       socket
       |> assign(:search, search)
-      |> assign(:limit, @page_size)
-      |> load_posts()
+      |> reset_posts()
 
     {:noreply, socket}
   end
 
   def handle_event("load_more", _params, socket) do
-    socket =
-      socket
-      |> update(:limit, &(&1 + @page_size))
-      |> load_posts()
-
-    {:noreply, socket}
+    {:noreply, append_posts(socket)}
   end
 
   def handle_event("prev_image", _params, socket) do
@@ -362,7 +356,7 @@ defmodule InstabotWeb.FeedLive do
     socket =
       socket
       |> assign(:profiles, Instagram.list_tracked_profiles(socket.assigns.current_scope.user.id))
-      |> load_posts()
+      |> reset_posts()
 
     {:noreply, socket}
   end
@@ -371,19 +365,33 @@ defmodule InstabotWeb.FeedLive do
     {:noreply, socket}
   end
 
-  defp load_posts(socket) do
+  defp reset_posts(socket) do
+    socket
+    |> assign(:loaded_posts, 0)
+    |> load_posts(true)
+  end
+
+  defp append_posts(socket), do: load_posts(socket, false)
+
+  defp load_posts(socket, reset?) do
     user_id = socket.assigns.current_scope.user.id
 
     opts = [
       profile_id: socket.assigns.profile_id,
       search: socket.assigns.search,
-      limit: socket.assigns.limit,
-      offset: 0
+      limit: @page_size,
+      offset: socket.assigns.loaded_posts
     ]
 
+    posts = Feed.list_posts(user_id, opts)
+    loaded_posts = if reset?, do: length(posts), else: socket.assigns.loaded_posts + length(posts)
+    total_posts = Feed.count_posts(user_id, opts)
+
     socket
-    |> assign(:posts, Feed.list_posts(user_id, opts))
-    |> assign(:total_posts, Feed.count_posts(user_id, opts))
+    |> stream(:posts, posts, reset: reset?, dom_id: fn post -> "post-#{post.id}" end)
+    |> assign(:loaded_posts, loaded_posts)
+    |> assign(:posts_empty?, loaded_posts == 0)
+    |> assign(:has_more_posts?, loaded_posts < total_posts)
   end
 
   defp thumbnail_for(post), do: Media.post_thumbnail_url(post)

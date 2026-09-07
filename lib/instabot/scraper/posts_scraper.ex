@@ -162,15 +162,16 @@ defmodule Instabot.Scraper.PostsScraper do
 
   defp persist_posts(profile, posts) do
     Enum.reduce(posts, %{persisted_count: 0, duplicate_count: 0}, fn post_attrs, acc ->
-      prepared_post = prepare_post_media(profile, post_attrs)
+      prepared_post = prepare_post_media(post_attrs)
 
       case Instagram.upsert_post_from_scrape(profile.id, prepared_post.attrs) do
         {:ok, post, status} when status in [:inserted, :updated] ->
-          create_post_images(post, prepared_post.media)
+          persist_post_media(profile, post, prepared_post.media)
           Events.broadcast_post_created(profile, post)
           %{acc | persisted_count: acc.persisted_count + 1}
 
-        {:ok, _post, :unchanged} ->
+        {:ok, post, :unchanged} ->
+          persist_post_media(profile, post, prepared_post.media)
           acc
 
         {:ok, nil, :duplicate} ->
@@ -182,36 +183,20 @@ defmodule Instabot.Scraper.PostsScraper do
     end)
   end
 
-  defp prepare_post_media(profile, %{media_urls: media_urls} = post_attrs) when is_list(media_urls) do
+  defp prepare_post_media(%{media_urls: media_urls} = post_attrs) when is_list(media_urls) do
     media =
       media_urls
       |> Enum.reject(&blank?/1)
       |> Enum.with_index()
-      |> Enum.map(fn {url, position} -> prepare_media_item(profile, url, position) end)
+      |> Enum.map(fn {url, position} -> prepare_media_item(url, position) end)
       |> Enum.reject(&is_nil/1)
 
-    novel_media = Enum.reject(media, &Instagram.media_duplicate?(profile.id, &1.fingerprint))
-
-    cond do
-      media == [] ->
-        %{attrs: post_attrs, media: []}
-
-      novel_media == [] ->
-        %{attrs: Map.put(post_attrs, :media_fingerprints, media_fingerprints(media)), media: []}
-
-      true ->
-        attrs =
-          post_attrs
-          |> Map.put(:media_urls, Enum.map(novel_media, & &1.url))
-          |> Map.put(:media_fingerprints, media_fingerprints(novel_media))
-
-        %{attrs: attrs, media: upload_post_media(profile, novel_media)}
-    end
+    %{attrs: Map.put(post_attrs, :media_fingerprints, media_fingerprints(media)), media: media}
   end
 
-  defp prepare_post_media(_profile, post_attrs), do: %{attrs: post_attrs, media: []}
+  defp prepare_post_media(post_attrs), do: %{attrs: post_attrs, media: []}
 
-  defp prepare_media_item(profile, url, position) do
+  defp prepare_media_item(url, position) do
     with {:ok, download} <- Media.download(url),
          {:ok, fingerprint} <- Fingerprint.from_bytes(download.body) do
       %{
@@ -220,8 +205,7 @@ defmodule Instabot.Scraper.PostsScraper do
         bytes: download.body,
         content_type: download.content_type,
         file_size: download.file_size,
-        fingerprint: Map.put(fingerprint, :media_position, position),
-        profile: profile
+        fingerprint: Map.put(fingerprint, :media_position, position)
       }
     else
       {:error, reason} ->
@@ -230,14 +214,8 @@ defmodule Instabot.Scraper.PostsScraper do
     end
   end
 
-  defp upload_post_media(profile, media) do
-    media
-    |> Enum.map(&upload_post_media_item(profile, &1))
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp upload_post_media_item(profile, media) do
-    subdirectory = Path.join("posts", profile.id)
+  defp upload_post_media_item(post, media) do
+    subdirectory = Path.join("posts", post.id)
     filename = post_media_filename(media.position, media.url)
 
     case Media.upload_image(media.bytes, subdirectory, filename,
@@ -253,25 +231,43 @@ defmodule Instabot.Scraper.PostsScraper do
     end
   end
 
-  defp create_post_images(post, media) do
+  defp persist_post_media(profile, post, media) do
     Enum.each(media, fn item ->
-      upload = item.upload
-
-      Instagram.create_post_image(post.id, %{
-        original_url: item.url,
-        local_path: upload[:local_path],
-        position: item.position,
-        content_type: item.content_type,
-        file_size: item.file_size,
-        cloudinary_public_id: upload[:cloudinary_public_id],
-        cloudinary_secure_url: upload[:cloudinary_secure_url],
-        cloudinary_version: upload[:cloudinary_version],
-        cloudinary_format: upload[:cloudinary_format],
-        cloudinary_resource_type: upload[:cloudinary_resource_type],
-        width: upload[:width],
-        height: upload[:height]
-      })
+      persist_post_media_item(profile, post, item, Instagram.get_post_image(post.id, item.position))
     end)
+  end
+
+  defp persist_post_media_item(_profile, _post, item, %{exact_sha256: exact_sha256} = post_image)
+       when exact_sha256 == item.fingerprint.exact_sha256 do
+    Instagram.update_post_image(post_image, %{original_url: item.url})
+  end
+
+  defp persist_post_media_item(profile, post, item, _post_image) do
+    case upload_post_media_item(post, item) do
+      nil ->
+        :ok
+
+      uploaded_item ->
+        upload = uploaded_item.upload
+
+        Instagram.upsert_post_image(post.id, %{
+          original_url: item.url,
+          local_path: upload[:local_path],
+          position: item.position,
+          content_type: item.content_type,
+          file_size: item.file_size,
+          exact_sha256: item.fingerprint.exact_sha256,
+          cloudinary_public_id: upload[:cloudinary_public_id],
+          cloudinary_secure_url: upload[:cloudinary_secure_url],
+          cloudinary_version: upload[:cloudinary_version],
+          cloudinary_format: upload[:cloudinary_format],
+          cloudinary_resource_type: upload[:cloudinary_resource_type],
+          width: upload[:width],
+          height: upload[:height]
+        })
+
+        Instagram.register_media_fingerprints(profile.id, :post, post.id, item.fingerprint)
+    end
   end
 
   defp media_fingerprints(media), do: Enum.map(media, & &1.fingerprint)

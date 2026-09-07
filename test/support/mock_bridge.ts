@@ -40,6 +40,7 @@ export function createMockBridgeHandlers(environment: NodeJS.ProcessEnv = proces
       base64: Buffer.from(params.clip ? "fake_clipped_png_data" : "fake_png_data").toString("base64")
     }),
     set_cookies: () => ({}),
+    shutdown: () => ({}),
     type: () => ({}),
     wait_for_selector: () => ({})
   }
@@ -98,11 +99,17 @@ export function startMockBridge(input: NodeJS.ReadableStream = process.stdin, ou
     const response = handleMockRequest(line)
 
     if (response) {
-      if (response.status === "ok" && JSON.parse(line).command === "close") {
+      const command = JSON.parse(line).command
+
+      if (response.status === "ok" && ["close", "shutdown"].includes(command)) {
         await stopChild(child)
       }
 
-      output.write(`${JSON.stringify(response)}\n`)
+      output.write(`${JSON.stringify(response)}\n`, () => {
+        if (command === "shutdown") {
+          process.exit(0)
+        }
+      })
     }
   })
 

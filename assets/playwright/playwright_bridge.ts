@@ -271,6 +271,11 @@ async function handleClose(state: BridgeState, params: JsonObject): Promise<Json
   return {}
 }
 
+async function handleShutdown(state: BridgeState, _params: JsonObject): Promise<JsonObject> {
+  await closeBrowser(state)
+  return {}
+}
+
 async function handleKeyboardPress(state: BridgeState, params: JsonObject): Promise<JsonObject> {
   const page = getPage(state, params.page_id)
   await page.keyboard.press(requiredString(params.key, "key"))
@@ -455,6 +460,7 @@ const commands: Record<string, BridgeHandler> = {
   restore_storage_state: handleRestoreStorageState,
   screenshot: handleScreenshot,
   set_cookies: handleSetCookies,
+  shutdown: handleShutdown,
   type: handleType,
   wait_for_selector: handleWaitForSelector
 }
@@ -502,6 +508,10 @@ async function handleLine(state: BridgeState, output: NodeJS.WritableStream, lin
     const data = await handler(state, request.params || {})
     process.stderr.write(`[bridge] command=${request.command} id=${request.id} ok\n`)
     respond(output, request.id, "ok", data)
+
+    if (request.command === "shutdown") {
+      process.exit(0)
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     process.stderr.write(`[bridge] command=${request.command} id=${request.id} error: ${message}\n`)

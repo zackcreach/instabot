@@ -21,6 +21,9 @@ defmodule Instabot.Workers.ScrapeProfile do
   require Logger
 
   @impl Oban.Worker
+  def timeout(_job), do: to_timeout(minute: 15)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: %{"tracked_profile_id" => tracked_profile_id}}) do
     profile = Instagram.get_tracked_profile!(tracked_profile_id)
 

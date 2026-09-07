@@ -10,6 +10,7 @@ defmodule Instabot.Instagram.PostImage do
     field :position, :integer, default: 0
     field :content_type, :string
     field :file_size, :integer
+    field :exact_sha256, :string
     field :cloudinary_public_id, :string
     field :cloudinary_secure_url, :string
     field :cloudinary_version, :string
@@ -31,6 +32,7 @@ defmodule Instabot.Instagram.PostImage do
       :position,
       :content_type,
       :file_size,
+      :exact_sha256,
       :cloudinary_public_id,
       :cloudinary_secure_url,
       :cloudinary_version,

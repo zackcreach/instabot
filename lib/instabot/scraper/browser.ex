@@ -163,8 +163,9 @@ defmodule Instabot.Scraper.Browser do
   @doc "Stops the Browser GenServer."
   @spec stop(pid()) :: :ok
   def stop(pid) do
-    close_browser(pid)
-    stop_server(pid)
+    monitor = Process.monitor(pid)
+    request_shutdown(pid)
+    await_shutdown(pid, monitor)
   end
 
   # --- Server Callbacks ---
@@ -233,14 +234,12 @@ defmodule Instabot.Scraper.Browser do
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.error("Playwright bridge exited with status #{status}")
-
     Enum.each(state.pending, fn {_id, {from, timer_ref}} ->
       Process.cancel_timer(timer_ref)
       GenServer.reply(from, {:error, :port_crashed})
     end)
 
-    {:stop, {:port_crashed, status}, %{state | pending: %{}, port: nil}}
+    stop_for_exit_status(status, %{state | pending: %{}, port: nil})
   end
 
   def handle_info({:command_timeout, command_id}, state) do
@@ -275,18 +274,28 @@ defmodule Instabot.Scraper.Browser do
     GenServer.call(pid, {:command, command, params}, :infinity)
   end
 
-  defp close_browser(pid) do
-    case close(pid) do
-      {:ok, _data} -> GenServer.call(pid, :browser_closed)
-      {:error, reason} -> Logger.warning("Failed to close browser before stopping bridge: #{inspect(reason)}")
+  defp request_shutdown(pid) do
+    case call(pid, :shutdown, %{}) do
+      {:ok, _data} -> :ok
+      {:error, reason} -> Logger.warning("Failed to shut down browser bridge: #{inspect(reason)}")
     end
   catch
     :exit, reason ->
-      Logger.warning("Failed to close browser before stopping bridge: #{inspect(reason)}")
+      Logger.warning("Failed to shut down browser bridge: #{inspect(reason)}")
+  end
+
+  defp await_shutdown(pid, monitor) do
+    receive do
+      {:DOWN, ^monitor, :process, ^pid, _reason} -> :ok
+    after
+      5_000 ->
+        Process.demonitor(monitor, [:flush])
+        stop_server(pid)
+    end
   end
 
   defp stop_server(pid) do
-    GenServer.stop(pid, :normal)
+    GenServer.stop(pid, :normal, 5_000)
   catch
     :exit, _reason -> :ok
   end
@@ -295,6 +304,13 @@ defmodule Instabot.Scraper.Browser do
     Port.close(port)
   rescue
     ArgumentError -> :ok
+  end
+
+  defp stop_for_exit_status(0, state), do: {:stop, :normal, state}
+
+  defp stop_for_exit_status(status, state) do
+    Logger.error("Playwright bridge exited with status #{status}")
+    {:stop, {:port_crashed, status}, state}
   end
 
   defp split_buffer(buffer) do

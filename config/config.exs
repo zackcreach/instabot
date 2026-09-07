@@ -62,6 +62,7 @@ config :instabot, Oban,
   queues: [scraping: 2, media: 5, ocr: 3, notifications: 2],
   plugins: [
     Oban.Plugins.Pruner,
+    {Oban.Plugins.Lifeline, rescue_after: to_timeout(minute: 30)},
     {Oban.Plugins.Cron,
      crontab: [
        {"*/30 * * * *", Instabot.Workers.ScheduleScrapes},

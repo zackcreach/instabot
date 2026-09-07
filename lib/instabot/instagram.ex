@@ -161,20 +161,8 @@ defmodule Instabot.Instagram do
   def upsert_post_from_scrape(tracked_profile_id, attrs) do
     case get_post_by_instagram_id(tracked_profile_id, attrs[:instagram_post_id] || attrs["instagram_post_id"]) do
       nil ->
-        case novel_media_fingerprints(tracked_profile_id, attrs[:media_fingerprints] || []) do
-          :no_fingerprints ->
-            with {:ok, post} <- create_post(tracked_profile_id, attrs) do
-              {:ok, post, :inserted}
-            end
-
-          [] ->
-            {:ok, nil, :duplicate}
-
-          media_fingerprints ->
-            with {:ok, post} <- create_post(tracked_profile_id, attrs) do
-              register_media_fingerprints(tracked_profile_id, :post, post.id, media_fingerprints)
-              {:ok, post, :inserted}
-            end
+        with {:ok, post} <- create_post(tracked_profile_id, attrs) do
+          {:ok, post, :inserted}
         end
 
       %Post{} = post ->
@@ -195,6 +183,26 @@ defmodule Instabot.Instagram do
     %PostImage{post_id: post_id}
     |> PostImage.changeset(attrs)
     |> Repo.insert()
+  end
+
+  def get_post_image(post_id, position) do
+    Repo.get_by(PostImage, post_id: post_id, position: position)
+  end
+
+  def update_post_image(%PostImage{} = post_image, attrs) do
+    post_image
+    |> PostImage.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def upsert_post_image(post_id, attrs) do
+    %PostImage{post_id: post_id}
+    |> PostImage.changeset(attrs)
+    |> Repo.insert(
+      conflict_target: [:post_id, :position],
+      on_conflict: {:replace_all_except, [:id, :post_id, :inserted_at]},
+      returning: true
+    )
   end
 
   def get_posts_needing_images(tracked_profile_id) do
@@ -375,7 +383,11 @@ defmodule Instabot.Instagram do
 
     %MediaFingerprint{}
     |> MediaFingerprint.changeset(attrs)
-    |> Repo.insert()
+    |> Repo.insert(
+      conflict_target: [:source_kind, :source_id, :media_position],
+      on_conflict: {:replace_all_except, [:id, :inserted_at]},
+      returning: true
+    )
   end
 
   def fail_scrape_log(%ScrapeLog{} = log, error_message) do
@@ -431,12 +443,6 @@ defmodule Instabot.Instagram do
       nil -> :novel
       fingerprint -> if media_duplicate?(tracked_profile_id, fingerprint), do: :duplicate, else: :novel
     end
-  end
-
-  defp novel_media_fingerprints(_tracked_profile_id, []), do: :no_fingerprints
-
-  defp novel_media_fingerprints(tracked_profile_id, fingerprints) do
-    Enum.reject(fingerprints, &media_duplicate?(tracked_profile_id, &1))
   end
 
   defp source_kind_value(source_kind) when is_atom(source_kind), do: Atom.to_string(source_kind)

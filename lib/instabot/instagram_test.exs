@@ -80,14 +80,14 @@ defmodule Instabot.InstagramTest do
       assert "https://instagram.com/p/rich_post" == updated_post.permalink
     end
 
-    test "skips a new post when all fingerprinted media are duplicate for the profile" do
+    test "keeps a new post when another post has identical media" do
       user = user_fixture()
       profile = tracked_profile_fixture(user)
       canonical = post_fixture(profile)
       fingerprint = fingerprint_attrs("same-media", "0000000000000000", 0)
       assert {:ok, _media_fingerprint} = Instagram.create_media_fingerprint(profile.id, :post, canonical.id, fingerprint)
 
-      assert {:ok, nil, :duplicate} =
+      assert {:ok, post, :inserted} =
                Instagram.upsert_post_from_scrape(profile.id, %{
                  instagram_post_id: "visual_duplicate_post",
                  post_type: "image",
@@ -95,10 +95,12 @@ defmodule Instabot.InstagramTest do
                  media_fingerprints: [fingerprint]
                })
 
-      assert [] ==
+      assert [inserted_post] =
                user.id
                |> Feed.list_posts(profile_id: profile.id)
                |> Enum.filter(&(&1.instagram_post_id == "visual_duplicate_post"))
+
+      assert post.id == inserted_post.id
     end
 
     test "inserts a carousel post when at least one fingerprinted media item is novel" do
@@ -124,8 +126,7 @@ defmodule Instabot.InstagramTest do
         |> where([media_fingerprint], media_fingerprint.source_kind == "post" and media_fingerprint.source_id == ^post.id)
         |> Repo.all()
 
-      assert [registered] = registered_fingerprints
-      assert novel_fingerprint.exact_sha256 == registered.exact_sha256
+      assert [] == registered_fingerprints
     end
   end
 
@@ -150,7 +151,7 @@ defmodule Instabot.InstagramTest do
                  screenshot_path: "priv/static/screenshots/refreshed.png",
                  media_url: "https://example.com/story.jpg",
                  posted_at: posted_at,
-                 expires_at: DateTime.add(posted_at, 1, :day)
+                 expires_at: DateTime.shift(posted_at, day: 1)
                })
 
       assert story.id == updated_story.id
@@ -180,7 +181,7 @@ defmodule Instabot.InstagramTest do
                  story_type: "image",
                  screenshot_path: "priv/static/screenshots/retry.png",
                  posted_at: posted_at,
-                 expires_at: DateTime.add(posted_at, 1, :day)
+                 expires_at: DateTime.shift(posted_at, day: 1)
                })
 
       assert story.id == updated_story.id
@@ -210,7 +211,7 @@ defmodule Instabot.InstagramTest do
                  story_type: "image",
                  screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/new.png",
                  posted_at: posted_at,
-                 expires_at: DateTime.add(posted_at, 1, :day)
+                 expires_at: DateTime.shift(posted_at, day: 1)
                })
 
       assert story.id == updated_story.id

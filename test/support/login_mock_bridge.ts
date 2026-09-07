@@ -113,6 +113,7 @@ export function createLoginMockBridgeHandlers(environment: NodeJS.ProcessEnv = p
     screenshot: () => ({
       base64: Buffer.from("fake_screenshot_data").toString("base64")
     }),
+    shutdown: () => ({}),
     set_cookies: () => ({}),
     type: () => {
       typeCount += 1
@@ -198,7 +199,13 @@ export function startLoginMockBridge(input: NodeJS.ReadableStream = process.stdi
     const response = handleLoginMockRequest(line, handlers)
 
     if (response) {
-      output.write(`${JSON.stringify(response)}\n`)
+      const command = JSON.parse(line).command
+
+      output.write(`${JSON.stringify(response)}\n`, () => {
+        if (command === "shutdown") {
+          process.exit(0)
+        }
+      })
     }
   })
 

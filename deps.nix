@@ -88,12 +88,12 @@ let
 
     cowboy = buildErlangMk rec {
       name = "cowboy";
-      version = "2.18.0";
+      version = "2.19.0";
 
       src = fetchHex {
         pkg = "cowboy";
         version = "${version}";
-        sha256 = "62d0b26abcf455054972b0da242389c69d5982ce5914afb8c344517f667b9600";
+        sha256 = "986dae81f99fcb78ef2d8efc21d738cee189410840eeaf32eca84ada81dcf6d4";
       };
 
       beamDeps = [ cowlib ranch ];
@@ -114,12 +114,12 @@ let
 
     cowlib = buildRebar3 rec {
       name = "cowlib";
-      version = "2.19.0";
+      version = "2.20.0";
 
       src = fetchHex {
         pkg = "cowlib";
         version = "${version}";
-        sha256 = "6dc66e3135b229193ea4dcb14294e79520c923d391315c9c962ef0b4bea72356";
+        sha256 = "7d41a0dd2c093041ff3779ac5fe8a1585a68ec7cb2dd1de0536bdd2452fd7ba1";
       };
 
       beamDeps = [];

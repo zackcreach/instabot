@@ -118,7 +118,7 @@ defmodule Instabot.Workers.SendDigest do
   defp tracked_profile_ids(nil), do: []
   defp tracked_profile_ids(tracked_profile_id), do: [tracked_profile_id]
 
-  defp default_lookback("daily"), do: DateTime.add(DateTime.utc_now(:second), -1, :day)
-  defp default_lookback("weekly"), do: DateTime.add(DateTime.utc_now(:second), -7, :day)
-  defp default_lookback(_), do: DateTime.add(DateTime.utc_now(:second), -1, :day)
+  defp default_lookback("daily"), do: DateTime.shift(DateTime.utc_now(:second), day: -1)
+  defp default_lookback("weekly"), do: DateTime.shift(DateTime.utc_now(:second), week: -1)
+  defp default_lookback(_), do: DateTime.shift(DateTime.utc_now(:second), day: -1)
 end

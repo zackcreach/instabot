@@ -12,6 +12,8 @@ defmodule Instabot.Workers.DownloadImageTest do
 
   @test_uploads_dir "test/tmp/uploads_worker"
 
+  setup {Req.Test, :verify_on_exit!}
+
   setup do
     previous_downloader_config = Application.get_env(:instabot, Downloader)
 
@@ -57,7 +59,6 @@ defmodule Instabot.Workers.DownloadImageTest do
     end
 
     test "creates post image records from Cloudinary metadata", %{post: post} do
-      bypass = Bypass.open()
       previous_media_config = Application.get_env(:instabot, Media)
       previous_cloudinary_config = Application.get_env(:instabot, Cloudinary)
 
@@ -68,7 +69,8 @@ defmodule Instabot.Workers.DownloadImageTest do
         api_key: "key",
         api_secret: "secret",
         folder: "instabot/test",
-        endpoint: "http://localhost:#{bypass.port}"
+        endpoint: "https://cloudinary.example",
+        request_options: [plug: {Req.Test, Cloudinary}]
       )
 
       on_exit(fn ->
@@ -76,7 +78,10 @@ defmodule Instabot.Workers.DownloadImageTest do
         restore_config(Cloudinary, previous_cloudinary_config)
       end)
 
-      Bypass.expect_once(bypass, "POST", "/demo/image/upload", fn conn ->
+      Req.Test.expect(Cloudinary, fn conn ->
+        assert "POST" == conn.method
+        assert "/demo/image/upload" == conn.request_path
+
         Plug.Conn.resp(
           conn,
           200,

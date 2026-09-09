@@ -14,7 +14,7 @@ defmodule Instabot.Scraping.State do
   @active_window_minutes 45
 
   def list_for_user(user_id) do
-    cutoff = DateTime.add(DateTime.utc_now(:second), -@active_window_minutes, :minute)
+    cutoff = DateTime.shift(DateTime.utc_now(:second), minute: -@active_window_minutes)
 
     TrackedProfile
     |> join(

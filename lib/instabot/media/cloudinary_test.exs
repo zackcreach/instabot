@@ -3,28 +3,32 @@ defmodule Instabot.Media.CloudinaryTest do
 
   alias Instabot.Media.Cloudinary
 
+  setup {Req.Test, :verify_on_exit!}
+
   setup do
     previous_config = Application.get_env(:instabot, Cloudinary)
-    bypass = Bypass.open()
 
     Application.put_env(:instabot, Cloudinary,
       cloud_name: "demo",
       api_key: "key",
       api_secret: "secret",
       folder: "instabot/test",
-      endpoint: "http://localhost:#{bypass.port}"
+      endpoint: "https://cloudinary.example",
+      request_options: [plug: {Req.Test, Cloudinary}]
     )
 
     on_exit(fn ->
       restore_config(previous_config)
     end)
 
-    %{bypass: bypass}
+    :ok
   end
 
   describe "upload_image/2" do
-    test "uploads bytes with basic auth and normalizes response", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "POST", "/demo/image/upload", fn conn ->
+    test "uploads bytes with basic auth and normalizes response" do
+      Req.Test.expect(Cloudinary, fn conn ->
+        assert "POST" == conn.method
+        assert "/demo/image/upload" == conn.request_path
         {:ok, body, conn} = Plug.Conn.read_body(conn)
 
         assert ["Basic " <> encoded] = Plug.Conn.get_req_header(conn, "authorization")
@@ -69,8 +73,10 @@ defmodule Instabot.Media.CloudinaryTest do
              } == metadata
     end
 
-    test "returns an error tuple for non-success responses", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "POST", "/demo/image/upload", fn conn ->
+    test "returns an error tuple for non-success responses" do
+      Req.Test.expect(Cloudinary, fn conn ->
+        assert "POST" == conn.method
+        assert "/demo/image/upload" == conn.request_path
         Plug.Conn.resp(conn, 401, Jason.encode!(%{error: %{message: "bad credentials"}}))
       end)
 

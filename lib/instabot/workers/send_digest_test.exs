@@ -144,7 +144,7 @@ defmodule Instabot.Workers.SendDigestTest do
     end
 
     test "uses previous digest period_end as new period_start", %{user: user, profile: profile} do
-      past = DateTime.add(DateTime.utc_now(:second), -3600, :second)
+      past = DateTime.shift(DateTime.utc_now(:second), hour: -1)
 
       {:ok, _prev_digest} =
         Notifications.create_email_digest(user.id, %{
@@ -152,7 +152,7 @@ defmodule Instabot.Workers.SendDigestTest do
           posts_count: 0,
           stories_count: 0,
           sent_at: past,
-          period_start: DateTime.add(past, -86_400, :second),
+          period_start: DateTime.shift(past, day: -1),
           period_end: past
         })
 

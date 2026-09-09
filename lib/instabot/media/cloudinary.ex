@@ -27,8 +27,9 @@ defmodule Instabot.Media.Cloudinary do
           folder -> Keyword.put(fields, :folder, folder)
         end
 
-      "#{config.endpoint}/#{config.cloud_name}/image/upload"
+      config.request_options
       |> Req.post(
+        url: "#{config.endpoint}/#{config.cloud_name}/image/upload",
         auth: {:basic, "#{config.api_key}:#{config.api_secret}"},
         form_multipart: fields,
         decode_body: :json,
@@ -67,7 +68,8 @@ defmodule Instabot.Media.Cloudinary do
          api_key: api_key,
          api_secret: api_secret,
          folder: Keyword.get(config, :folder),
-         endpoint: Keyword.get(config, :endpoint, @default_endpoint)
+         endpoint: Keyword.get(config, :endpoint, @default_endpoint),
+         request_options: Keyword.get(config, :request_options, [])
        }}
     end
   end

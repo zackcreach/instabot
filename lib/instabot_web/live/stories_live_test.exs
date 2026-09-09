@@ -42,7 +42,7 @@ defmodule InstabotWeb.StoriesLiveTest do
 
     test "groups stories by day with a heading", %{conn: conn, profile: profile} do
       now = DateTime.utc_now(:second)
-      two_days_ago = DateTime.add(now, -2 * 86_400, :second)
+      two_days_ago = DateTime.shift(now, day: -2)
 
       _older =
         story_fixture(profile, %{

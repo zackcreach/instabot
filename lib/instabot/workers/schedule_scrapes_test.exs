@@ -50,13 +50,13 @@ defmodule Instabot.Workers.ScheduleScrapesTest do
       {1, nil} =
         Repo.update_all(
           from(profile in TrackedProfile, where: profile.id == ^due_profile.id),
-          set: [last_scraped_at: DateTime.add(now, -361, :minute)]
+          set: [last_scraped_at: DateTime.shift(now, minute: -361)]
         )
 
       {1, nil} =
         Repo.update_all(
           from(profile in TrackedProfile, where: profile.id == ^skipped_profile.id),
-          set: [last_scraped_at: DateTime.add(now, -359, :minute)]
+          set: [last_scraped_at: DateTime.shift(now, minute: -359)]
         )
 
       assert :ok == ScheduleScrapes.perform(%Oban.Job{})

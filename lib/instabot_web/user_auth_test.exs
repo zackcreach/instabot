@@ -298,7 +298,11 @@ defmodule InstabotWeb.UserAuthTest do
     end
 
     test "redirects when authentication is too old", %{conn: conn, user: user} do
-      eleven_minutes_ago = :second |> DateTime.utc_now() |> DateTime.add(-11, :minute)
+      eleven_minutes_ago =
+        :second
+        |> DateTime.utc_now()
+        |> DateTime.shift(minute: -11)
+
       user = %{user | authenticated_at: eleven_minutes_ago}
       user_token = Accounts.generate_user_session_token(user)
       {user, token_inserted_at} = Accounts.get_user_by_session_token(user_token)

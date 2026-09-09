@@ -30,7 +30,7 @@ defmodule InstabotWeb.UserLive.SettingsTest do
     end
 
     test "renders if user is not in sudo mode", %{conn: conn} do
-      twenty_one_minutes_ago = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+      twenty_one_minutes_ago = DateTime.shift(DateTime.utc_now(:second), minute: -21)
       user = %{user_fixture() | authenticated_at: twenty_one_minutes_ago}
 
       {:ok, _lv, html} =
@@ -94,7 +94,7 @@ defmodule InstabotWeb.UserLive.SettingsTest do
     end
 
     test "requires fresh authentication before submitting", %{conn: conn} do
-      twenty_one_minutes_ago = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+      twenty_one_minutes_ago = DateTime.shift(DateTime.utc_now(:second), minute: -21)
       user = %{user_fixture() | authenticated_at: twenty_one_minutes_ago}
       stale_conn = log_in_user(conn, user)
 
@@ -183,7 +183,7 @@ defmodule InstabotWeb.UserLive.SettingsTest do
     end
 
     test "requires fresh authentication before submitting", %{conn: conn} do
-      twenty_one_minutes_ago = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+      twenty_one_minutes_ago = DateTime.shift(DateTime.utc_now(:second), minute: -21)
       user = %{user_fixture() | authenticated_at: twenty_one_minutes_ago}
       stale_conn = log_in_user(conn, user)
 

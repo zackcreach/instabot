@@ -31,7 +31,7 @@ defmodule Instabot.Instagram.FeedTest do
       profile = tracked_profile_fixture(user)
       now = DateTime.utc_now(:second)
 
-      older_post = post_fixture(profile, %{posted_at: DateTime.add(now, -3600, :second)})
+      older_post = post_fixture(profile, %{posted_at: DateTime.shift(now, hour: -1)})
       newer_post = post_fixture(profile, %{posted_at: now})
 
       assert [first, second] = Feed.list_posts(user.id)
@@ -43,7 +43,7 @@ defmodule Instabot.Instagram.FeedTest do
       profile = tracked_profile_fixture(user)
       now = DateTime.utc_now(:second)
 
-      old_dated_post = post_fixture(profile, %{posted_at: DateTime.add(now, -365, :day)})
+      old_dated_post = post_fixture(profile, %{posted_at: DateTime.shift(now, day: -365)})
       recent_undated_post = post_fixture(profile, %{posted_at: nil})
 
       {1, nil} =
@@ -118,7 +118,7 @@ defmodule Instabot.Instagram.FeedTest do
 
       posts =
         for index <- 0..4 do
-          post_fixture(profile, %{posted_at: DateTime.add(now, index, :second)})
+          post_fixture(profile, %{posted_at: DateTime.shift(now, second: index)})
         end
 
       [_, _, _, _, newest] = posts
@@ -213,7 +213,7 @@ defmodule Instabot.Instagram.FeedTest do
       profile = tracked_profile_fixture(user)
       now = DateTime.utc_now(:second)
 
-      older = story_fixture(profile, %{posted_at: DateTime.add(now, -3600, :second)})
+      older = story_fixture(profile, %{posted_at: DateTime.shift(now, hour: -1)})
       newer = story_fixture(profile, %{posted_at: now})
 
       assert [first, second] = Feed.list_stories(user.id)
@@ -267,7 +267,7 @@ defmodule Instabot.Instagram.FeedTest do
         story_fixture(profile, %{
           instagram_story_id: "older_duplicate",
           media_url: "https://cdn.instagram.com/story.jpg?token=old",
-          posted_at: DateTime.add(posted_at, -3600, :second)
+          posted_at: DateTime.shift(posted_at, hour: -1)
         })
 
       newer_duplicate =

@@ -22,7 +22,7 @@ defmodule Instabot.InstagramFixtures do
   def connected_connection_fixture(user, attrs \\ %{}) do
     connection = instagram_connection_fixture(user, attrs)
     encrypted = Encryption.encrypt_term(sample_cookies())
-    expires_at = DateTime.add(DateTime.utc_now(), 90, :day)
+    expires_at = DateTime.shift(DateTime.utc_now(), day: 90)
     {:ok, connection} = Instagram.store_cookies(connection, encrypted, expires_at)
     connection
   end
@@ -65,7 +65,7 @@ defmodule Instabot.InstagramFixtures do
         ocr_text: "Sample OCR text",
         screenshot_path: "/tmp/screenshot.png",
         posted_at: now,
-        expires_at: DateTime.add(now, 24, :hour)
+        expires_at: DateTime.shift(now, day: 1)
       })
 
     {:ok, story} = Instagram.create_story(tracked_profile.id, story_attrs)

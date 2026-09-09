@@ -55,7 +55,7 @@ defmodule Instabot.Scraper.Session do
   def save_cookies(browser_pid, page_id, %InstagramConnection{} = connection) do
     with {:ok, storage_state} <- Browser.get_storage_state(browser_pid, page_id) do
       encrypted = Encryption.encrypt_term(storage_state)
-      expires_at = DateTime.add(DateTime.utc_now(), 90, :day)
+      expires_at = DateTime.shift(DateTime.utc_now(), day: 90)
       Instagram.store_cookies(connection, encrypted, expires_at)
     end
   end

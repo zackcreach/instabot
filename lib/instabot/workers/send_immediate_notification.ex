@@ -92,14 +92,14 @@ defmodule Instabot.Workers.SendImmediateNotification do
   defp determine_period_start(user_id, nil) do
     case Notifications.last_digest_for_user(user_id, "immediate") do
       %{period_end: period_end} when not is_nil(period_end) -> period_end
-      _ -> DateTime.add(DateTime.utc_now(:second), -1, :day)
+      _ -> DateTime.shift(DateTime.utc_now(:second), day: -1)
     end
   end
 
   defp determine_period_start(user_id, tracked_profile_id) do
     case Notifications.last_digest_for_profile(user_id, "immediate", tracked_profile_id) do
       %{period_end: period_end} when not is_nil(period_end) -> period_end
-      _ -> DateTime.add(DateTime.utc_now(:second), -1, :day)
+      _ -> DateTime.shift(DateTime.utc_now(:second), day: -1)
     end
   end
 

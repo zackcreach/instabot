@@ -93,12 +93,12 @@ defmodule Instabot.AccountsTest do
       now = DateTime.utc_now()
 
       assert Accounts.sudo_mode?(%User{authenticated_at: DateTime.utc_now()})
-      assert Accounts.sudo_mode?(%User{authenticated_at: DateTime.add(now, -19, :minute)})
-      refute Accounts.sudo_mode?(%User{authenticated_at: DateTime.add(now, -21, :minute)})
+      assert Accounts.sudo_mode?(%User{authenticated_at: DateTime.shift(now, minute: -19)})
+      refute Accounts.sudo_mode?(%User{authenticated_at: DateTime.shift(now, minute: -21)})
 
       # minute override
       refute Accounts.sudo_mode?(
-               %User{authenticated_at: DateTime.add(now, -11, :minute)},
+               %User{authenticated_at: DateTime.shift(now, minute: -11)},
                -10
              )
 
@@ -275,7 +275,7 @@ defmodule Instabot.AccountsTest do
     end
 
     test "duplicates the authenticated_at of given user in new token", %{user: user} do
-      user = %{user | authenticated_at: DateTime.add(DateTime.utc_now(:second), -3600)}
+      user = %{user | authenticated_at: DateTime.shift(DateTime.utc_now(:second), hour: -1)}
       token = Accounts.generate_user_session_token(user)
       assert user_token = Repo.get_by(UserToken, token: token)
       assert user_token.authenticated_at == user.authenticated_at

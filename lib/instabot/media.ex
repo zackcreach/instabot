@@ -6,6 +6,7 @@ defmodule Instabot.Media do
   alias Instabot.Media.Cloudinary
   alias Instabot.Media.Downloader
   alias Instabot.Media.LocalStorage
+  alias Instabot.Media.Url
 
   @default_uploads_dir "priv/static/uploads"
   @default_storage_adapter LocalStorage
@@ -127,7 +128,7 @@ defmodule Instabot.Media do
     local_path = local_story_path(story, opts)
     media_url = loadable_story_media_url(story, opts)
 
-    Enum.find_value([Map.get(story, :screenshot_url), local_path, media_url], &present_media_url/1)
+    Enum.find_value([local_path, Map.get(story, :screenshot_url), media_url], &present_media_url/1)
   end
 
   @spec story_has_screenshot?(map()) :: boolean()
@@ -151,9 +152,12 @@ defmodule Instabot.Media do
   def to_url(nil), do: nil
 
   def to_url(path) do
-    case String.split(path, "priv/static/", parts: 2) do
-      [_, relative] -> "/" <> relative
-      _ -> path
+    relative = Path.relative_to(path, uploads_dir())
+
+    case {relative == path, Path.split(relative)} do
+      {false, [".." | _outside]} -> legacy_url(path)
+      {false, _inside} -> Url.original_url(relative)
+      {true, _same} -> legacy_url(path)
     end
   end
 
@@ -193,8 +197,8 @@ defmodule Instabot.Media do
     |> Keyword.get(:storage_adapter, @default_storage_adapter)
   end
 
-  defp post_image_url(%{cloudinary_secure_url: url}) when is_binary(url) and url != "", do: to_url(url)
   defp post_image_url(%{local_path: path}) when is_binary(path) and path != "", do: to_url(path)
+  defp post_image_url(%{cloudinary_secure_url: url}) when is_binary(url) and url != "", do: to_url(url)
   defp post_image_url(_post_image), do: nil
 
   defp fallback_post_media_urls([], post), do: post_image_urls(Map.take(post, [:media_urls]))
@@ -242,6 +246,13 @@ defmodule Instabot.Media do
 
   defp merge_upload_metadata({:ok, upload}, metadata), do: {:ok, Map.merge(metadata, upload)}
   defp merge_upload_metadata({:error, reason}, _metadata), do: {:error, reason}
+
+  defp legacy_url(path) do
+    case String.split(path, "priv/static/", parts: 2) do
+      [_, relative] -> "/" <> relative
+      _other -> path
+    end
+  end
 
   defp fetch(url) do
     Downloader.fetch(url, Application.get_env(:instabot, Downloader, []))

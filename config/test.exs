@@ -24,6 +24,11 @@ database_config =
 # Only in tests, remove the complexity from the password hashing algorithm
 config :bcrypt_elixir, :log_rounds, 1
 
+config :imgproxy,
+  prefix: "https://images.example/transform",
+  key: String.duplicate("01", 32),
+  salt: String.duplicate("02", 32)
+
 # In test we don't send emails
 config :instabot, Instabot.Mailer, adapter: Swoosh.Adapters.Test
 
@@ -48,6 +53,7 @@ config :instabot, InstabotWeb.Endpoint,
   server: false
 
 config :instabot, Oban, testing: :manual
+config :instabot, :media_base_url, "https://images.example"
 config :instabot, :rate_limiting_enabled, false
 config :instabot, :turnstile, enabled: false
 

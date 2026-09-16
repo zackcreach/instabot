@@ -144,6 +144,13 @@ if config_env() == :prod do
     System.get_env("TURNSTILE_SECRET_KEY") ||
       raise "environment variable TURNSTILE_SECRET_KEY is missing."
 
+  media_base_url = System.fetch_env!("MEDIA_BASE_URL")
+
+  config :imgproxy,
+    prefix: "#{media_base_url}/transform",
+    key: System.fetch_env!("IMGPROXY_KEY"),
+    salt: System.fetch_env!("IMGPROXY_SALT")
+
   config :instabot, Cloudinary,
     cloud_name: cloudinary_cloud_name,
     api_key: cloudinary_api_key,
@@ -155,7 +162,7 @@ if config_env() == :prod do
     api_key: mailgun_api_key,
     domain: mailgun_domain
 
-  config :instabot, Instabot.Media, storage_adapter: Cloudinary
+  config :instabot, Instabot.Media, storage_adapter: Instabot.Media.LocalStorage
   config :instabot, Instabot.Repo, [pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")] ++ database_options
 
   config :instabot, InstabotWeb.Endpoint,
@@ -194,5 +201,6 @@ if config_env() == :prod do
   config :instabot, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
   config :instabot, :email_base_url, email_base_url
   config :instabot, :from_email, from_email
+  config :instabot, :media_base_url, media_base_url
   config :instabot, :turnstile, enabled: true, site_key: turnstile_site_key, secret_key: turnstile_secret_key
 end

@@ -346,6 +346,19 @@ let
       beamDeps = [];
     };
 
+    imgproxy = buildMix rec {
+      name = "imgproxy";
+      version = "3.1.0";
+
+      src = fetchHex {
+        pkg = "imgproxy";
+        version = "${version}";
+        sha256 = "5abfe6777c95f8fb8e6b031ecfcfe3399b3327a76a9aa2e870af235d79b8081f";
+      };
+
+      beamDeps = [];
+    };
+
     jason = buildMix rec {
       name = "jason";
       version = "1.4.5";

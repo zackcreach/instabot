@@ -113,8 +113,29 @@ defmodule Instabot.MediaTest do
                file_size: 4
              } = result
 
-      assert String.ends_with?(local_path, "test_post/image_0.jpg")
+      assert String.ends_with?(local_path, ".jpg")
+      assert result.storage_key == Path.relative_to(local_path, @test_uploads_dir)
+      assert result.version == result.checksum
       assert File.exists?(local_path)
+    end
+  end
+
+  describe "upload_image/4" do
+    test "reuses a verified content-addressed file" do
+      assert {:ok, first_upload} = Media.upload_image("same bytes", "posts", "image.jpg")
+      assert {:ok, repeated_upload} = Media.upload_image("same bytes", "posts", "image.jpg")
+
+      assert first_upload.local_path == repeated_upload.local_path
+      assert "same bytes" == File.read!(first_upload.local_path)
+    end
+
+    test "rejects a corrupted content-addressed collision without overwriting it" do
+      assert {:ok, upload} = Media.upload_image("original bytes", "posts", "image.jpg")
+      File.write!(upload.local_path, "corrupted bytes")
+
+      assert {:error, :checksum_collision} = Media.upload_image("original bytes", "posts", "image.jpg")
+      assert "corrupted bytes" == File.read!(upload.local_path)
+      assert [] == Path.wildcard("#{upload.local_path}.*.tmp")
     end
   end
 
@@ -146,7 +167,7 @@ defmodule Instabot.MediaTest do
       }
 
       assert [
-               "https://res.cloudinary.com/demo/image/upload/v1/posts/hosted.jpg",
+               "/uploads/posts/old.jpg",
                "/uploads/posts/local.jpg"
              ] == Media.post_image_urls(post)
     end
@@ -162,14 +183,14 @@ defmodule Instabot.MediaTest do
   end
 
   describe "story_preview_url/2" do
-    test "prefers Cloudinary story screenshots over local screenshots and scraped media URLs" do
+    test "prefers local story screenshots over Cloudinary and scraped media URLs" do
       story = %{
         screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/story.jpg",
         screenshot_path: "priv/static/screenshots/story.png",
         media_url: "https://example.com/story.jpg"
       }
 
-      assert "https://res.cloudinary.com/demo/image/upload/v1/stories/story.jpg" == Media.story_preview_url(story)
+      assert "/screenshots/story.png" == Media.story_preview_url(story)
     end
 
     test "falls back to a browser-loadable scraped media URL when required local screenshot is missing" do

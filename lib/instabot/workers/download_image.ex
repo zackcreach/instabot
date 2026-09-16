@@ -21,6 +21,7 @@ defmodule Instabot.Workers.DownloadImage do
              position: position,
              content_type: result.content_type,
              file_size: result.file_size,
+             exact_sha256: result[:checksum],
              cloudinary_public_id: result[:cloudinary_public_id],
              cloudinary_secure_url: result[:cloudinary_secure_url],
              cloudinary_version: result[:cloudinary_version],

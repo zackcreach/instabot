@@ -133,7 +133,8 @@ defmodule Instabot.Workers.DownloadImageTest do
 
       post_with_images = Repo.preload(post, :post_images)
       assert [image] = post_with_images.post_images
-      assert String.ends_with?(image.local_path, "image_2.jpg")
+      assert String.ends_with?(image.local_path, ".jpg")
+      assert image.exact_sha256 == image.local_path |> Path.basename() |> Path.rootname()
     end
   end
 

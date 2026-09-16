@@ -1,6 +1,7 @@
 defmodule Instabot.Media.MigrationTest do
   use Instabot.DataCase, async: false
 
+  import Ecto.Query
   import Instabot.AccountsFixtures
   import Instabot.InstagramFixtures
 
@@ -14,6 +15,7 @@ defmodule Instabot.Media.MigrationTest do
   setup do
     uploads_dir = Application.get_env(:instabot, :uploads_dir)
     downloader_config = Application.get_env(:instabot, Downloader)
+    legacy_media_cutoff = Application.get_env(:instabot, :legacy_media_cutoff)
     File.rm_rf!(@uploads_dir)
     Application.put_env(:instabot, :uploads_dir, @uploads_dir)
 
@@ -21,6 +23,7 @@ defmodule Instabot.Media.MigrationTest do
       File.rm_rf!(@uploads_dir)
       restore_uploads_dir(uploads_dir)
       restore_downloader(downloader_config)
+      restore_legacy_media_cutoff(legacy_media_cutoff)
     end)
   end
 
@@ -59,6 +62,29 @@ defmodule Instabot.Media.MigrationTest do
     assert ":source_missing" == report.failures |> List.first() |> Map.fetch!(:reason)
   end
 
+  test "operations exclude only pre-rollout records without verified local media" do
+    cutoff = DateTime.utc_now()
+    Application.put_env(:instabot, :legacy_media_cutoff, cutoff)
+    user = user_fixture()
+    profile = tracked_profile_fixture(user)
+    post = post_fixture(profile)
+
+    assert {:ok, post_image} =
+             Instagram.create_post_image(post.id, %{
+               original_url: "https://media.example/unavailable.jpg",
+               cloudinary_secure_url: "https://media.example/unavailable-cloudinary.jpg",
+               position: 0
+             })
+
+    Repo.update_all(from(image in PostImage, where: image.id == ^post_image.id),
+      set: [inserted_at: DateTime.shift(cutoff, second: -1)]
+    )
+
+    for operation <- [&Migration.inventory/0, &Migration.backfill/0, &Migration.verify/0] do
+      assert {:ok, %{records: 1, excluded_legacy: 1, failures: []}} = operation.()
+    end
+  end
+
   defp configure_download(bytes) do
     adapter = fn request ->
       {request, Req.Response.new(status: 200, headers: %{"content-type" => ["image/jpeg"]}, body: bytes)}
@@ -74,4 +100,6 @@ defmodule Instabot.Media.MigrationTest do
   defp restore_uploads_dir(value), do: Application.put_env(:instabot, :uploads_dir, value)
   defp restore_downloader(nil), do: Application.delete_env(:instabot, Downloader)
   defp restore_downloader(value), do: Application.put_env(:instabot, Downloader, value)
+  defp restore_legacy_media_cutoff(nil), do: Application.delete_env(:instabot, :legacy_media_cutoff)
+  defp restore_legacy_media_cutoff(value), do: Application.put_env(:instabot, :legacy_media_cutoff, value)
 end

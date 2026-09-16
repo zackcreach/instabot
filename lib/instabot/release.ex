@@ -46,12 +46,20 @@ defmodule Instabot.Release do
 
     case operation.() do
       {:ok, report} ->
-        IO.inspect(report, pretty: true, limit: :infinity)
+        print_media_report(report)
         :ok
 
       {:error, report} ->
-        IO.inspect(report, pretty: true, limit: :infinity)
+        print_media_report(report)
         raise "media operation failed for #{length(report.failures)} records"
     end
+  end
+
+  defp print_media_report(report) do
+    Enum.each(report.failures, &IO.inspect(&1, label: "media failure"))
+
+    report
+    |> Map.put(:failures, length(report.failures))
+    |> IO.inspect(label: "media summary")
   end
 end

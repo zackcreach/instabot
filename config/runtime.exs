@@ -146,6 +146,16 @@ if config_env() == :prod do
 
   media_base_url = System.fetch_env!("MEDIA_BASE_URL")
 
+  legacy_media_cutoff =
+    case System.get_env("MEDIA_LEGACY_CUTOFF") do
+      nil ->
+        nil
+
+      value ->
+        {:ok, cutoff, 0} = DateTime.from_iso8601(value)
+        cutoff
+    end
+
   config :imgproxy,
     prefix: "#{media_base_url}/transform",
     key: System.fetch_env!("IMGPROXY_KEY"),
@@ -201,6 +211,7 @@ if config_env() == :prod do
   config :instabot, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
   config :instabot, :email_base_url, email_base_url
   config :instabot, :from_email, from_email
+  config :instabot, :legacy_media_cutoff, legacy_media_cutoff
   config :instabot, :media_base_url, media_base_url
   config :instabot, :turnstile, enabled: true, site_key: turnstile_site_key, secret_key: turnstile_secret_key
 end

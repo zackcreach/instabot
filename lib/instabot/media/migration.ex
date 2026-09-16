@@ -47,19 +47,25 @@ defmodule Instabot.Media.Migration do
   defp records({schema, _path_field, _source_fields, _checksum_field, _size_field}), do: Repo.all(from(record in schema))
 
   defp process_record(record, record_type, operation, report) do
-    case process(record, record_type, operation) do
-      {:ok, byte_count, state} ->
-        report
-        |> Map.update!(:records, &(&1 + 1))
-        |> Map.update!(:bytes, &(&1 + byte_count))
-        |> Map.update!(state, &(&1 + 1))
+    if excluded_legacy?(record, record_type) do
+      report
+      |> Map.update!(:records, &(&1 + 1))
+      |> Map.update!(:excluded_legacy, &(&1 + 1))
+    else
+      case process(record, record_type, operation) do
+        {:ok, byte_count, state} ->
+          report
+          |> Map.update!(:records, &(&1 + 1))
+          |> Map.update!(:bytes, &(&1 + byte_count))
+          |> Map.update!(state, &(&1 + 1))
 
-      {:error, reason} ->
-        failure = %{schema: inspect(record.__struct__), id: record.id, reason: inspect(reason)}
+        {:error, reason} ->
+          failure = %{schema: inspect(record.__struct__), id: record.id, reason: inspect(reason)}
 
-        report
-        |> Map.update!(:records, &(&1 + 1))
-        |> Map.update!(:failures, &[failure | &1])
+          report
+          |> Map.update!(:records, &(&1 + 1))
+          |> Map.update!(:failures, &[failure | &1])
+      end
     end
   end
 
@@ -215,7 +221,27 @@ defmodule Instabot.Media.Migration do
   end
 
   defp initial_report(operation) do
-    %{operation: operation, records: 0, bytes: 0, verified: 0, migrated: 0, unchanged: 0, failures: []}
+    %{
+      operation: operation,
+      records: 0,
+      bytes: 0,
+      verified: 0,
+      migrated: 0,
+      unchanged: 0,
+      excluded_legacy: 0,
+      failures: []
+    }
+  end
+
+  defp excluded_legacy?(record, record_type) do
+    case Application.get_env(:instabot, :legacy_media_cutoff) do
+      %DateTime{} = cutoff ->
+        DateTime.before?(record.inserted_at, cutoff) and
+          match?({:error, _reason}, verified_local_bytes(record, record_type))
+
+      nil ->
+        false
+    end
   end
 
   defp checksum(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)

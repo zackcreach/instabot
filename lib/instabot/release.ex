@@ -22,15 +22,15 @@ defmodule Instabot.Release do
   end
 
   def media_inventory do
-    run_media_operation(&Migration.inventory/0)
+    run_media_operations([&Migration.inventory/0, &StoryVideos.inventory/0])
   end
 
   def backfill_media do
-    run_media_operation(&Migration.backfill/0)
+    run_media_operations([&Migration.backfill/0, &StoryVideos.backfill/0])
   end
 
   def verify_media do
-    run_media_operation(&Migration.verify/0)
+    run_media_operations([&Migration.verify/0, &StoryVideos.verify/0])
   end
 
   def backfill_story_videos do
@@ -62,6 +62,10 @@ defmodule Instabot.Release do
         print_media_report(report)
         raise "media operation failed for #{length(report.failures)} records"
     end
+  end
+
+  defp run_media_operations(operations) do
+    Enum.each(operations, &run_media_operation/1)
   end
 
   defp print_media_report(report) do

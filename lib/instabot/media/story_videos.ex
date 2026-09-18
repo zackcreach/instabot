@@ -12,6 +12,11 @@ defmodule Instabot.Media.StoryVideos do
     run(&backfill_story/1)
   end
 
+  @spec inventory() :: {:ok, map()} | {:error, map()}
+  def inventory do
+    run(&inventory_story/1)
+  end
+
   @spec verify() :: {:ok, map()} | {:error, map()}
   def verify do
     run(&verify_story/1)
@@ -56,6 +61,23 @@ defmodule Instabot.Media.StoryVideos do
            })
            |> Repo.update() do
       {:ok, byte_size(stored_bytes), :migrated}
+    else
+      false -> {:error, :source_missing}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp inventory_story(%{media_path: path} = story) when is_binary(path) and path != "" do
+    with {:ok, bytes} <- File.read(path),
+         :ok <- verify_checksum(bytes, story.media_sha256) do
+      {:ok, byte_size(bytes), :unchanged}
+    end
+  end
+
+  defp inventory_story(story) do
+    with true <- present?(story.media_url),
+         {:ok, download} <- Media.download(story.media_url) do
+      {:ok, byte_size(download.body), :unchanged}
     else
       false -> {:error, :source_missing}
       {:error, reason} -> {:error, reason}

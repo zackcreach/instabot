@@ -54,6 +54,7 @@ defmodule Instabot.Media.StoryVideosTest do
     assert @video == File.read!(stored_story.media_path)
     assert "video/mp4" == stored_story.media_content_type
     assert byte_size(@video) == stored_story.media_file_size
+    assert {:ok, %{unchanged: 1, failures: []}} = StoryVideos.inventory()
     assert {:ok, %{unchanged: 1, failures: []}} = StoryVideos.verify()
   end
 

@@ -24,6 +24,10 @@ defmodule Instabot.Instagram.Story do
     field :ad_reasons, {:array, :string}, default: []
     field :story_type, :string
     field :media_url, :string
+    field :media_path, :string
+    field :media_content_type, :string
+    field :media_file_size, :integer
+    field :media_sha256, :string
     field :posted_at, :utc_datetime
     field :expires_at, :utc_datetime
 
@@ -51,6 +55,10 @@ defmodule Instabot.Instagram.Story do
       :ad_reasons,
       :story_type,
       :media_url,
+      :media_path,
+      :media_content_type,
+      :media_file_size,
+      :media_sha256,
       :posted_at,
       :expires_at
     ])

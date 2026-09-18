@@ -4,6 +4,7 @@ defmodule Instabot.Release do
   """
 
   alias Instabot.Media.Migration
+  alias Instabot.Media.StoryVideos
 
   @app :instabot
 
@@ -30,6 +31,14 @@ defmodule Instabot.Release do
 
   def verify_media do
     run_media_operation(&Migration.verify/0)
+  end
+
+  def backfill_story_videos do
+    run_media_operation(&StoryVideos.backfill/0)
+  end
+
+  def verify_story_videos do
+    run_media_operation(&StoryVideos.verify/0)
   end
 
   defp repos do

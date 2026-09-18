@@ -214,6 +214,20 @@ defmodule Instabot.MediaTest do
     end
   end
 
+  describe "story_video_url/1" do
+    test "returns the public original URL for a locally stored video" do
+      story = %{story_type: "video", media_path: Path.join(@test_uploads_dir, "ab/story.mp4")}
+
+      assert "https://images.example/original/instabot/ab/story.mp4" == Media.story_video_url(story)
+    end
+
+    test "does not use expiring remote video URLs" do
+      story = %{story_type: "video", media_path: nil, media_url: "https://cdn.example/story.mp4"}
+
+      assert is_nil(Media.story_video_url(story))
+    end
+  end
+
   defp restore_env(Media, nil), do: Application.delete_env(:instabot, Media)
 
   defp restore_env(Cloudinary, nil), do: Application.delete_env(:instabot, Cloudinary)

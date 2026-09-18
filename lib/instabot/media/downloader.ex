@@ -3,7 +3,7 @@ defmodule Instabot.Media.Downloader do
 
   alias Instabot.Network.SafeUrl
 
-  @allowed_content_types ["image/avif", "image/gif", "image/jpeg", "image/png", "image/webp"]
+  @allowed_content_types ["image/avif", "image/gif", "image/jpeg", "image/png", "image/webp", "video/mp4"]
   @default_maximum_bytes 15 * 1024 * 1024
   @maximum_redirects 5
 
@@ -137,5 +137,6 @@ defmodule Instabot.Media.Downloader do
   defp validate_signature("image/gif", <<"GIF89a", _rest::binary>>), do: :ok
   defp validate_signature("image/webp", <<"RIFF", _size::binary-size(4), "WEBP", _rest::binary>>), do: :ok
   defp validate_signature("image/avif", <<_size::binary-size(4), "ftypavif", _rest::binary>>), do: :ok
+  defp validate_signature("video/mp4", <<_size::binary-size(4), "ftyp", _brand::binary-size(4), _rest::binary>>), do: :ok
   defp validate_signature(_content_type, _body), do: {:error, :invalid_image}
 end

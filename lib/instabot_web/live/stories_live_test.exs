@@ -175,6 +175,29 @@ defmodule InstabotWeb.StoriesLiveTest do
              )
     end
 
+    test "plays a locally stored story video with the screenshot as its poster", %{conn: conn, profile: profile} do
+      screenshot_path = Path.join(Instabot.Media.uploads_dir(), "cd/poster.png")
+      File.mkdir_p!(Path.dirname(screenshot_path))
+      File.write!(screenshot_path, "poster")
+
+      story =
+        story_fixture(profile, %{
+          instagram_story_id: "local_video_story",
+          story_type: "video",
+          media_path: Path.join(Instabot.Media.uploads_dir(), "ab/story.mp4"),
+          screenshot_path: screenshot_path
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/feed/stories/#{story.id}")
+
+      assert has_element?(
+               view,
+               "#story-modal-video[src='https://images.example/original/instabot/ab/story.mp4'][poster='https://images.example/original/instabot/cd/poster.png'][controls]"
+             )
+
+      refute has_element?(view, "#story-modal-image-link")
+    end
+
     test "closing the modal patches back to /feed/stories", %{conn: conn, story: story} do
       {:ok, view, _html} = live(conn, ~p"/feed/stories/#{story.id}")
 

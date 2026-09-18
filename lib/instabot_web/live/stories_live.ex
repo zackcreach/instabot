@@ -177,8 +177,19 @@ defmodule InstabotWeb.StoriesLive do
             id={"lightbox-#{@selected_story.id}"}
             class="aspect-[9/16] bg-base-300 rounded overflow-hidden mb-4 max-h-[60vh] max-w-[360px] mx-auto"
           >
+            <video
+              :if={story_video_url(@selected_story)}
+              id="story-modal-video"
+              src={story_video_url(@selected_story)}
+              poster={story_preview_url(@selected_story)}
+              controls
+              playsinline
+              preload="metadata"
+              class="w-full h-full object-contain"
+            >
+            </video>
             <a
-              :if={story_preview_url(@selected_story)}
+              :if={!story_video_url(@selected_story) && story_preview_url(@selected_story)}
               id="story-modal-image-link"
               href={story_preview_url(@selected_story)}
               target="_blank"
@@ -318,6 +329,8 @@ defmodule InstabotWeb.StoriesLive do
   defp story_preview_url(story) do
     Media.story_preview_url(story, require_local_exists: true, blocked_hosts: @blocked_preview_hosts)
   end
+
+  defp story_video_url(story), do: Media.story_video_url(story)
 
   defp format_datetime(datetime), do: DateTimeFormatter.datetime(datetime)
 end

@@ -335,6 +335,7 @@ defmodule Instabot.Scraper.StoriesScraper do
   defp persist_stories(profile, stories) do
     Enum.reduce(stories, %{persisted_count: 0, duplicate_count: 0}, fn story, acc ->
       prepared_screenshot = prepare_screenshot(profile, story)
+      prepared_media = prepare_media(profile, story)
 
       story_attrs =
         Map.merge(
@@ -347,7 +348,7 @@ defmodule Instabot.Scraper.StoriesScraper do
             posted_at: story.posted_at,
             expires_at: story.expires_at
           },
-          prepared_screenshot.attrs
+          Map.merge(prepared_screenshot.attrs, prepared_media)
         )
 
       case Instagram.upsert_story_from_scrape(profile.id, story_attrs) do
@@ -397,6 +398,28 @@ defmodule Instabot.Scraper.StoriesScraper do
   end
 
   defp prepare_screenshot(_profile, _story), do: %{attrs: %{}}
+
+  defp prepare_media(profile, %{story_type: "video", media_url: media_url, instagram_story_id: story_id})
+       when is_binary(media_url) and media_url != "" do
+    with {:ok, download} <- Media.download(media_url),
+         {:ok, upload} <-
+           Media.upload_image(download.body, Path.join("stories", profile.id), "#{story_id}.mp4",
+             content_type: download.content_type
+           ) do
+      %{
+        media_path: upload.local_path,
+        media_content_type: download.content_type,
+        media_file_size: upload.file_size,
+        media_sha256: upload.checksum
+      }
+    else
+      {:error, reason} ->
+        Logger.warning("Failed to save story video #{story_id}: #{inspect(reason)}")
+        %{}
+    end
+  end
+
+  defp prepare_media(_profile, _story), do: %{}
 
   defp prepare_thumbnail(profile, story_id, thumbnail_url, download) do
     case Fingerprint.from_bytes(download.body) do

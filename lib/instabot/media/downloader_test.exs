@@ -11,6 +11,13 @@ defmodule Instabot.Media.DownloaderTest do
              fetch(response(status: 200, headers: image_headers(), body: @jpeg))
   end
 
+  test "accepts an MP4 video from a public HTTPS URL" do
+    video = <<0, 0, 0, 24, "ftyp", "isom", 0, 0, 0, 0>>
+
+    assert {:ok, %Req.Response{body: ^video}} =
+             fetch(response(status: 200, headers: %{"content-type" => ["video/mp4"]}, body: video))
+  end
+
   test "rejects private destinations before requesting them" do
     assert {:error, :unsafe_url} ==
              Downloader.fetch("https://media.example/image.jpg",

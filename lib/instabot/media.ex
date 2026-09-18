@@ -131,6 +131,12 @@ defmodule Instabot.Media do
     Enum.find_value([local_path, Map.get(story, :screenshot_url), media_url], &present_media_url/1)
   end
 
+  @spec story_video_url(map()) :: String.t() | nil
+  def story_video_url(%{story_type: "video", media_path: media_path}) when is_binary(media_path) and media_path != "",
+    do: to_url(media_path)
+
+  def story_video_url(_story), do: nil
+
   @spec story_has_screenshot?(map()) :: boolean()
   def story_has_screenshot?(%{screenshot_url: screenshot_url}) when is_binary(screenshot_url) and screenshot_url != "",
     do: true

@@ -351,6 +351,8 @@ defmodule Instabot.Notifications.DigestEmail do
 
   defp absolute_media_url(nil), do: nil
   defp absolute_media_url(""), do: nil
+  defp absolute_media_url("http://" <> _path = url), do: url
+  defp absolute_media_url("https://" <> _path = url), do: url
 
   defp absolute_media_url(url) do
     url

@@ -40,13 +40,37 @@ defmodule Instabot.Notifications.DigestEmailTest do
 
     email = build_email(context, %{posts: [post], stories: []})
 
-    assert email.html_body =~ ~s(src="http://symphony:4002/uploads/posts/image_0.jpg")
+    assert email.html_body =~ ~s(src="https://images.example/original/instabot/posts/image_0.jpg")
     assert email.html_body =~ ~s(href="http://symphony:4002/feed/posts/#{post.id}")
     assert email.text_body =~ "http://symphony:4002/feed/posts/#{post.id}"
     assert email.html_body =~ ~s(alt="Instagram post preview")
     refute email.html_body =~ "https://example.com/fallback.jpg"
     refute email.html_body =~ post.permalink
     refute email.text_body =~ post.permalink
+  end
+
+  test "does not reinterpret a public local post URL as a storage path", context do
+    post =
+      context.profile
+      |> post_fixture(%{media_urls: []})
+      |> Repo.preload(:tracked_profile)
+
+    local_path = Path.join(Instabot.Media.uploads_dir(), "ab/local-post.jpg")
+
+    {:ok, _image} =
+      Instagram.create_post_image(post.id, %{
+        original_url: "https://example.com/original.jpg",
+        local_path: local_path,
+        position: 0,
+        content_type: "image/jpeg",
+        file_size: 123
+      })
+
+    post = Repo.preload(post, [:post_images], force: true)
+    email = build_email(context, %{posts: [post], stories: []})
+
+    assert email.html_body =~ ~s(src="https://images.example/original/instabot/ab/local-post.jpg")
+    refute email.html_body =~ "/original/instabot/https%3A"
   end
 
   test "prefers Cloudinary post media previews in the html digest", context do
@@ -61,7 +85,7 @@ defmodule Instabot.Notifications.DigestEmailTest do
     {:ok, _image} =
       Instagram.create_post_image(post.id, %{
         original_url: "https://example.com/original.jpg",
-        local_path: "priv/static/uploads/posts/image_0.jpg",
+        local_path: nil,
         cloudinary_secure_url: "https://res.cloudinary.com/demo/image/upload/v1/posts/image_0.jpg",
         position: 0,
         content_type: "image/jpeg",
@@ -96,11 +120,26 @@ defmodule Instabot.Notifications.DigestEmailTest do
     refute email.html_body =~ "https://example.com/story.jpg"
   end
 
+  test "does not reinterpret a public local story URL as a storage path", context do
+    story =
+      context.profile
+      |> story_fixture(%{
+        screenshot_path: Path.join(Instabot.Media.uploads_dir(), "cd/local-story.png"),
+        media_url: "https://example.com/story.mp4"
+      })
+      |> Repo.preload(:tracked_profile)
+
+    email = build_email(context, %{posts: [], stories: [story]})
+
+    assert email.html_body =~ ~s(src="https://images.example/original/instabot/cd/local-story.png")
+    refute email.html_body =~ "/original/instabot/https%3A"
+  end
+
   test "prefers Cloudinary story screenshots in the html digest", context do
     story =
       context.profile
       |> story_fixture(%{
-        screenshot_path: "priv/static/screenshots/story.png",
+        screenshot_path: nil,
         screenshot_url: "https://res.cloudinary.com/demo/image/upload/v1/stories/story.png",
         media_url: "https://example.com/story.jpg"
       })

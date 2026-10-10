@@ -127,12 +127,12 @@ let
 
     decimal = buildMix rec {
       name = "decimal";
-      version = "3.1.1";
+      version = "3.2.0";
 
       src = fetchHex {
         pkg = "decimal";
         version = "${version}";
-        sha256 = "c5f25f2ced74a0587d03e6023f595db8e924c9d3922c8c8ffd9edfc4498cf1f6";
+        sha256 = "190bca80580ce61aa69bb0eacadd7677710205c770225c2c2c07e32a5c31b234";
       };
 
       beamDeps = [];

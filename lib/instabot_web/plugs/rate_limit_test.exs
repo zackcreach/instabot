@@ -50,4 +50,31 @@ defmodule InstabotWeb.Plugs.RateLimitTest do
     refute result_a.halted
     refute result_b.halted
   end
+
+  test "uses the first forwarded address from a loopback proxy" do
+    conn =
+      build_conn()
+      |> Map.put(:remote_ip, {127, 0, 0, 1})
+      |> put_req_header("x-forwarded-for", "203.0.113.8, 127.0.0.1")
+
+    assert "rate_limit:/:203.0.113.8" == RateLimit.default_key(conn)
+  end
+
+  test "ignores forwarded addresses from untrusted peers" do
+    conn =
+      build_conn()
+      |> Map.put(:remote_ip, {192, 0, 2, 10})
+      |> put_req_header("x-forwarded-for", "203.0.113.8")
+
+    assert "rate_limit:/:192.0.2.10" == RateLimit.default_key(conn)
+  end
+
+  test "falls back to the proxy address for an invalid forwarded address" do
+    conn =
+      build_conn()
+      |> Map.put(:remote_ip, {127, 0, 0, 1})
+      |> put_req_header("x-forwarded-for", "not-an-ip")
+
+    assert "rate_limit:/:127.0.0.1" == RateLimit.default_key(conn)
+  end
 end

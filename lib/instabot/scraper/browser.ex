@@ -4,7 +4,7 @@ defmodule Instabot.Scraper.Browser do
   Provides synchronous command execution with request/response correlation.
   """
 
-  use GenServer
+  use GenServer, restart: :temporary
 
   require Logger
 

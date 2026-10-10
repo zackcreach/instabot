@@ -133,6 +133,10 @@ defmodule Instabot.Scraper.BrowserTest do
   end
 
   describe "stop/1" do
+    test "does not restart a failed bridge under its supervisor" do
+      assert :temporary == Browser.child_spec([]).restart
+    end
+
     test "stops the GenServer" do
       {:ok, pid} = start_mock_browser()
       :ok = Browser.stop(pid)

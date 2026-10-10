@@ -44,9 +44,8 @@ defmodule Instabot.Workers.ScrapeProfile do
     with :ok <- verify_active(profile),
          {:ok, connection} <- get_connection(profile.user_id) do
       posts_result = scrape_posts(profile, connection)
-      stories_result = scrape_stories(profile, connection)
 
-      case scrape_result([posts_result, stories_result]) do
+      case continue_scrape(profile, connection, posts_result) do
         :ok ->
           Events.broadcast(profile, :downstream)
           pending_ocr_count = enqueue_downstream_jobs(profile)
@@ -55,8 +54,20 @@ defmodule Instabot.Workers.ScrapeProfile do
 
         {:error, _reason} = error ->
           error
+
+        {:cancel, _reason} = cancellation ->
+          cancellation
       end
     end
+  end
+
+  defp continue_scrape(_profile, connection, {:error, {:posts, :session_expired}}) do
+    expire_connection(connection)
+  end
+
+  defp continue_scrape(profile, connection, posts_result) do
+    stories_result = scrape_stories(profile, connection)
+    scrape_result(connection, [posts_result, stories_result])
   end
 
   defp verify_active(%{is_active: true}), do: :ok
@@ -98,7 +109,25 @@ defmodule Instabot.Workers.ScrapeProfile do
     end
   end
 
-  defp scrape_result(results) do
+  defp scrape_result(connection, results) do
+    if Enum.any?(results, &session_expired?/1) do
+      expire_connection(connection)
+    else
+      successful_scrape_result(results)
+    end
+  end
+
+  defp session_expired?({:error, {_scrape_type, :session_expired}}), do: true
+  defp session_expired?(_result), do: false
+
+  defp expire_connection(connection) do
+    case Instagram.mark_connection_expired(connection) do
+      {:ok, _connection} -> {:cancel, "instagram session expired"}
+      {:error, reason} -> {:error, {:connection_update, reason}}
+    end
+  end
+
+  defp successful_scrape_result(results) do
     if Enum.any?(results, fn result -> match?({:ok, _log}, result) end) do
       :ok
     else

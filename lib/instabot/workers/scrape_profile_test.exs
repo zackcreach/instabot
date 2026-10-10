@@ -109,6 +109,34 @@ defmodule Instabot.Workers.ScrapeProfileTest do
 
       assert ["failed", "failed"] == Enum.sort(statuses)
     end
+
+    test "expires a connection when Instagram redirects scrapes to login", %{user: user, profile: profile} do
+      _connection = connected_connection_fixture(user)
+      scraper_config = Application.get_env(:instabot, Instabot.Scraper, [])
+      mock_bridge_path = Path.expand("../../../test/support/dist/mock_bridge.js", __DIR__)
+
+      Application.put_env(
+        :instabot,
+        Instabot.Scraper,
+        scraper_config
+        |> Keyword.put(:playwright_path, Path.dirname(mock_bridge_path))
+        |> Keyword.put(:bridge_script, mock_bridge_path)
+      )
+
+      System.put_env("INSTABOT_MOCK_BRIDGE_SESSION_EXPIRED", "true")
+
+      on_exit(fn ->
+        Application.put_env(:instabot, Instabot.Scraper, scraper_config)
+        System.delete_env("INSTABOT_MOCK_BRIDGE_SESSION_EXPIRED")
+      end)
+
+      assert {:cancel, "instagram session expired"} ==
+               ScrapeProfile.perform(%Oban.Job{
+                 args: %{"tracked_profile_id" => profile.id}
+               })
+
+      assert "expired" == Instagram.get_connection_for_user(user.id).status
+    end
   end
 
   describe "unique constraint" do

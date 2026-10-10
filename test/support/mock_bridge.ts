@@ -26,7 +26,12 @@ export function createMockBridgeHandlers(environment: NodeJS.ProcessEnv = proces
     evaluate: () => ({result: null}),
     get_cookies: () => ({cookies: [{name: "test", value: "cookie"}]}),
     get_json_responses: () => ({responses: []}),
-    get_page_content: () => ({content: "<html><body>Mock content</body></html>"}),
+    get_page_content: () => ({
+      content:
+        environment.INSTABOT_MOCK_BRIDGE_SESSION_EXPIRED === "true"
+          ? '<html><body><form action="/accounts/login/"><input name="username"><input name="password"></form></body></html>'
+          : "<html><body>Mock content</body></html>"
+    }),
     launch: () => {
       if (environment.INSTABOT_MOCK_BRIDGE_FAIL_LAUNCH === "true") {
         return {error: "mock launch failed", status: "error"}
